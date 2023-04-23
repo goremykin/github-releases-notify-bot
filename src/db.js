@@ -1,5 +1,4 @@
-const MongoClient = require('mongodb').MongoClient;
-const assert = require('assert');
+const {MongoClient} = require('mongodb');
 
 class DB {
   constructor(url, name) {
@@ -12,19 +11,14 @@ class DB {
 
   async init() {
     try {
-      const client = await new Promise((resolve) => MongoClient.connect(this.url, {
+      const client = await MongoClient.connect(this.url, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
-        poolSize: 20,
         socketTimeoutMS: 480000,
-        keepAlive: 300000
-      }, (err, client) => {
-        assert.equal(null, err);
+        keepAlive: true
+      });
 
-        console.log("Connected successfully to DB");
-
-        resolve(client);
-      }));
+      console.log("Connected successfully to DB");
 
       const db = client.db(this.name);
 
