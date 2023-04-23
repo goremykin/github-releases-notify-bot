@@ -25,7 +25,7 @@ const getClient = (params) => {
       });
 
       const response = await fetch(req);
-      const body = response.json();
+      const body = await response.json();
 
       if (body.errors && body.errors.length) {
         throw new Error(`Error while graphql request: ${JSON.stringify(body.errors, null, '  ')}`);
