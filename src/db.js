@@ -12,17 +12,21 @@ class DB {
 
   async init() {
     try {
-      const db = await new Promise((resolve) => MongoClient.connect(this.url + this.name, {
+      const client = await new Promise((resolve) => MongoClient.connect(this.url, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
         poolSize: 20,
         socketTimeoutMS: 480000,
         keepAlive: 300000
-      }, (err, db) => {
+      }, (err, client) => {
         assert.equal(null, err);
 
         console.log("Connected successfully to DB");
 
-        resolve(db);
+        resolve(client);
       }));
+
+      const db = client.db(this.name);
 
       await this.createCollections(db);
 
@@ -43,14 +47,14 @@ class DB {
     const neededCollections = ['users', 'repos'];
 
     const collections = await db.collections();
-
-    const collectionsForCreate = neededCollections.filter((neededCollection) => collections.indexOf(neededCollection) === -1);
+    const existingCollectionNames = collections.map(collection => collection.collectionName);
+    const collectionsForCreate = neededCollections.filter((neededCollection) => existingCollectionNames.indexOf(neededCollection) === -1);
 
     return await Promise.all([...collectionsForCreate.map((collection) => db.createCollection(collection))]);
   }
 
   async createIndexes() {
-    const isExistUsersIndex = this.users.indexExists('userId');
+    const isExistUsersIndex = await this.users.indexExists('userId');
 
     if (!isExistUsersIndex) {
       return await this.users.createIndex({userId: 1}, {unique: true});
@@ -99,13 +103,6 @@ class DB {
 
       return 'new';
     }
-  }
-
-  async removeRepo(owner, name) {
-    return await this.repos.deleteOne({
-      owner,
-      name
-    });
   }
 
   async getUserSubscriptions(userId) {
