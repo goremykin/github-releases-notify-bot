@@ -1,4 +1,4 @@
-const {Markup} = require('telegraf');
+const { Markup } = require('telegraf');
 
 module.exports = {
   actionsList: () => Markup.inlineKeyboard([

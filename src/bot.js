@@ -1,12 +1,12 @@
 const Telegraf = require('telegraf');
-const {Extra, Markup, session} = require('telegraf');
+const { Extra, Markup, session } = require('telegraf');
 const SocksProxyAgent = require('socks-proxy-agent');
 
 const keyboards = require('./keyboards');
 const config = require('../config.json');
-const {about, greeting, stats} = require('./texts');
-const {getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages} = require('./utils');
-const {getVersions} = require('./github-client');
+const { about, greeting, stats } = require('./texts');
+const { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } = require('./utils');
+const { getVersions } = require('./github-client');
 
 
 const API_TOKEN = config.telegram.token || '';
@@ -90,7 +90,7 @@ class Bot {
     await this.sendReleases(
       null,
       repos,
-      async (markdown, key, {watchedUsers}) => {
+      async (markdown, key, { watchedUsers }) => {
         await Promise.all(watchedUsers.map(async (userId) => {
           try {
             await this.bot.telegram.sendMessage(userId, markdown, Extra.markdown());
@@ -164,7 +164,7 @@ class Bot {
           return this.checkAdminPrivileges(ctx, async () => {
             const users = await this.db.getAllUsers();
 
-            await Promise.all(users.map(async ({userId, username, firstName, lastName}) => {
+            await Promise.all(users.map(async ({ userId, username, firstName, lastName }) => {
               try {
                 await this.bot.telegram.sendMessage(userId, ctx.match.input, Extra.markdown())
               } catch (err) {
@@ -192,7 +192,7 @@ class Bot {
   }
 
   async editRepos(ctx) {
-    const {subscriptions} = await this.db.getUser(getUser(ctx).id);
+    const { subscriptions } = await this.db.getUser(getUser(ctx).id);
 
     await ctx.answerCbQuery('');
 
@@ -242,7 +242,7 @@ class Bot {
   }
 
   async getReleasesOne(ctx) {
-    const {subscriptions} = await this.db.getUser(getUser(ctx).id);
+    const { subscriptions } = await this.db.getUser(getUser(ctx).id);
 
     ctx.session.subscriptions = subscriptions;
 
@@ -253,7 +253,7 @@ class Bot {
       keyboards.table(
         'getReleases',
         'getReleases:one',
-        subscriptions.map(({owner, name}) => `${owner}/${name}`)
+        subscriptions.map(({ owner, name }) => `${owner}/${name}`)
       )
     )
   }
@@ -264,7 +264,7 @@ class Bot {
     const index = parseInt(ctx.match[1]);
 
     if (ctx.session.subscriptions && ctx.session.subscriptions[index]) {
-      const {owner, name} = ctx.session.subscriptions[index];
+      const { owner, name } = ctx.session.subscriptions[index];
 
       const repo = await this.db.getRepo(owner, name);
 
@@ -273,7 +273,7 @@ class Bot {
         keyboards.table(
           `getReleases:one`,
           `getReleases:one:${index}:release`,
-          repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({name, isPrerelease}) => `${name}${isPrerelease ? ' (pre-release)' : ''}`)
+          repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({ name, isPrerelease }) => `${name}${isPrerelease ? ' (pre-release)' : ''}`)
         )
       );
 
@@ -289,13 +289,13 @@ class Bot {
       const releaseIndex = parseInt(ctx.match[2]);
 
       if (ctx.session.subscriptions && ctx.session.subscriptions[repoIndex]) {
-        const {owner, name} = ctx.session.subscriptions[repoIndex];
+        const { owner, name } = ctx.session.subscriptions[repoIndex];
 
         const repo = await this.db.getRepo(owner, name);
 
         return this.sendReleases(
           null,
-          [Object.assign(repo, {releases: [repo.releases.slice(PREVIEW_RELEASES_COUNT)[releaseIndex]]})],
+          [Object.assign(repo, { releases: [repo.releases.slice(PREVIEW_RELEASES_COUNT)[releaseIndex]] })],
           ctx.replyWithMarkdown
         );
       }
@@ -369,13 +369,13 @@ class Bot {
       const users = await this.db.getAllUsers();
       const repos = await this.db.getAllReposNames();
 
-      const groups = users.filter(({type}) => type && type !== 'private');
+      const groups = users.filter(({ type }) => type && type !== 'private');
       const groupsCount = groups.length;
 
       const chatsMembersCounts = await Promise.all(
         groups
-          .map(({userId}) => this.bot.telegram.getChatMembersCount(userId))
-          .map((promise) => promise.catch(() => null))
+          .map(({ userId }) => this.bot.telegram.getChatMembersCount(userId))
+          .map(( promise ) => promise.catch(() => null))
       );
 
       const usersInGroups = chatsMembersCounts
@@ -384,16 +384,16 @@ class Bot {
 
       const chatsInfo = (await Promise.all(
         groups
-          .map(({userId}) => this.bot.telegram.getChat(userId))
+          .map(({ userId }) => this.bot.telegram.getChat(userId))
           .map((promise) => promise.catch(() => null))
       ))
         .filter(Boolean)
-        .map((info, index) => Object.assign(info, {members: chatsMembersCounts[index]}));
+        .map((info, index) => Object.assign(info, { members: chatsMembersCounts[index] }));
 
-      const usersCount = users.filter(({type}) => !type || type === 'private').length;
+      const usersCount = users.filter(({ type }) => !type || type === 'private').length;
       const reposCount = repos.length;
-      const averageSubscriptionsPerUser = (users.reduce((acc, {subscriptions}) => acc + subscriptions.length, 0) / users.length).toFixed(2);
-      const averageWatchPerRepo = (repos.reduce((acc, {watchedUsers = []}) => acc + watchedUsers.length, 0) / repos.length).toFixed(2);
+      const averageSubscriptionsPerUser = (users.reduce((acc, { subscriptions }) => acc + subscriptions.length, 0) / users.length).toFixed(2);
+      const averageWatchPerRepo = (repos.reduce((acc, { watchedUsers = [] }) => acc + watchedUsers.length, 0) / repos.length).toFixed(2);
 
       return ctx.reply(stats({
         groupsCount,
@@ -409,7 +409,7 @@ class Bot {
 
   getReleaseSender(ctx, repo, send) {
     return (promise, release) => {
-      const {full, short} = getReleaseMessages(repo, release || {});
+      const { full, short } = getReleaseMessages(repo, release || {});
 
       if (ctx) {
         ctx.session.releasesDescriptions.push(full);

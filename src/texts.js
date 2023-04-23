@@ -37,7 +37,7 @@ Average watch per repo: ${averageWatchPerRepo}
 
 Chats: 
 ${
-  chatsInfo.map(({title, members}) => `${title} - ${members}\n`)
+  chatsInfo.map(({ title, members }) => `${title} - ${members}\n`)
 }
 `;
 

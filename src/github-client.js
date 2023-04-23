@@ -44,7 +44,7 @@ const client = getClient({
   }
 });
 
-const prepareRelease = ({url, isPrerelease, description, tag}) => ({
+const prepareRelease = ({ url, isPrerelease, description, tag }) => ({
   url,
   description,
   isPrerelease,
@@ -98,7 +98,7 @@ const getTags = (owner, name, count = 1) => client.query(
 const getVersions = async (owner, name, count) => {
   const [releases, tags] = await Promise.all([getReleases(owner, name, count), getTags(owner, name, count)]);
 
-  return {releases, tags}
+  return { releases, tags }
 };
 
 const getMany = (query, repos, count) => {
@@ -106,9 +106,9 @@ const getMany = (query, repos, count) => {
     return client.query(
       repos.map((repo, index) => `repo_${index}: ${query(repo.owner, repo.name, count)}`).join('\n')
     )
-      .then(({data}) =>
+      .then(({ data }) =>
         data ? repos.map((repo, index) => Object.assign(
-          {rawReleases: data['repo_' + index]},
+          { rawReleases: data['repo_' + index] },
           repo
         )) : []
       );
@@ -118,7 +118,7 @@ const getMany = (query, repos, count) => {
 };
 
 const parseMany = (parser, toField) => (data = []) => {
-  return data.map(({owner, name, rawReleases}) => {
+  return data.map(({ owner, name, rawReleases }) => {
     return {
       owner,
       name,
@@ -135,11 +135,11 @@ const getManyTags = (repos, count) => getMany(tags, repos, count)
 
 const getManyVersions = async (repos, count) => {
   const releases = await getManyReleases(repos, count);
-  const releasesUpdates = releases.filter(({releases}) => releases.length);
+  const releasesUpdates = releases.filter(({ releases }) => releases.length);
   const tags = await getManyTags(repos, count);
-  const tagsUpdates = tags.filter(({tags}) => tags.length);
+  const tagsUpdates = tags.filter(({ tags }) => tags.length);
 
-  return {releases: releasesUpdates, tags: tagsUpdates};
+  return { releases: releasesUpdates, tags: tagsUpdates };
 };
 
 const BUNCH_SIZE = 50;
@@ -151,10 +151,10 @@ const getManyVersionsInBunches = async (repos, count) => {
     .map((s, index) => getManyVersions(repos.slice(index * BUNCH_SIZE, index * BUNCH_SIZE + BUNCH_SIZE), count))
   );
 
-  return resultedBunches.reduce((acc, {tags, releases}) => ({
+  return resultedBunches.reduce((acc, { tags, releases }) => ({
     releases: acc.releases.concat(releases),
     tags: acc.tags.concat(tags)
-  }), {releases: [], tags: []});
+  }), { releases: [], tags: [] });
 };
 
 module.exports = {

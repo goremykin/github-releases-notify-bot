@@ -6,11 +6,11 @@ const getUser = (ctx) => ctx.message ? (
   ctx.update.callback_query.message.chat || ctx.update.callback_query.from
 );
 
-const getShortReleaseMessage = (repo = {owner: '', name: ''}, release = {name: ''}) =>
+const getShortReleaseMessage = (repo = { owner: '', name: '' }, release = { name: '' }) =>
   `<b>${repo && repo.owner}/${repo && repo.name}</b> 
 ${release && release.isPrerelease ? '<b>Pre-release</b> ' : ''}${release && release.name}`;
 
-const getFullReleaseMessage = (repo = {owner: '', name: ''}, release = {name: '', url: ''}) =>
+const getFullReleaseMessage = (repo = { owner: '', name: '' }, release = { name: '', url: '' }) =>
   `*${repo && repo.owner}/${repo && repo.name}*
 ${release && release.isPrerelease ? '*Pre-release* ' : ''}[${release && release.name}](${release && release.url})
 ${
@@ -64,7 +64,7 @@ const parseRepo = (str) => {
     }
 
     if (owner && name) {
-      return {owner, name};
+      return { owner, name };
     } else {
       return null;
     }
@@ -84,7 +84,7 @@ const getLastReleasesInRepos = (repo) => {
     releases.unshift(lastRelease);
   }
 
-  return Object.assign({}, repo, {releases});
+  return Object.assign({}, repo, { releases });
 };
 
 module.exports = {

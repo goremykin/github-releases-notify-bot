@@ -1,6 +1,5 @@
 const fs = require('fs');
 
-
 class Logger {
   constructor(path) {
     this.path = path;
@@ -19,7 +18,7 @@ class Logger {
   output(items, type) {
     const str = `${(new Date).toISOString()} | ${type} | ${items.map((item) => item.toString()).join(' ')}\n`;
 
-    fs.writeFileSync(this.path, str, {flag: 'a+'});
+    fs.writeFileSync(this.path, str, { flag: 'a+' });
   }
 }
 

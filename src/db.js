@@ -1,4 +1,4 @@
-const {MongoClient} = require('mongodb');
+const { MongoClient } = require('mongodb');
 
 class DB {
   constructor(url, name) {
@@ -51,7 +51,7 @@ class DB {
     const isExistUsersIndex = await this.users.indexExists('userId');
 
     if (!isExistUsersIndex) {
-      return await this.users.createIndex({userId: 1}, {unique: true});
+      return await this.users.createIndex({ userId: 1 }, { unique: true });
     } else {
       return null;
     }
@@ -82,7 +82,7 @@ class DB {
   }
 
   async addRepo(owner, name) {
-    const repo = await this.repos.findOne({owner, name});
+    const repo = await this.repos.findOne({ owner, name });
 
     if (repo && repo.owner && repo.name) {
       return 'exist';
@@ -100,11 +100,11 @@ class DB {
   }
 
   async getUserSubscriptions(userId) {
-    return await this.repos.find({watchedUsers: userId}).toArray();
+    return await this.repos.find({ watchedUsers: userId }).toArray();
   }
 
   async getUser(userId) {
-    return await this.users.findOne({userId});
+    return await this.users.findOne({ userId });
   }
 
   async getAllUsers() {
@@ -112,7 +112,7 @@ class DB {
   }
 
   async getRepo(owner, name) {
-    return await this.repos.findOne({owner, name});
+    return await this.repos.findOne({ owner, name });
   }
 
   async getAllRepos() {
@@ -120,7 +120,7 @@ class DB {
   }
 
   async getAllReposNames() {
-    return await this.repos.find({}, {name: 1, owner: 1, watchedUsers: 1, _id: 0}).toArray();
+    return await this.repos.find({}, { name: 1, owner: 1, watchedUsers: 1, _id: 0 }).toArray();
   }
 
   async clearReleases() {
@@ -138,18 +138,18 @@ class DB {
     ]);
   }
 
-  async updateRepo(owner, name, {releases: newReleases, tags: newTags}) {
-    const {releases, tags} = await this.repos.findOne({owner, name});
+  async updateRepo(owner, name, { releases: newReleases, tags: newTags }) {
+    const { releases, tags } = await this.repos.findOne({ owner, name });
 
     const filteredReleases = this.filterNewReleases(releases, newReleases);
     const filteredTags = this.filterNewReleases(tags, newTags);
 
-    return await this.repos.updateOne({owner, name}, {
+    return await this.repos.updateOne({ owner, name }, {
       $push: {
-        releases: {$each: filteredReleases},
-        tags: {$each: filteredTags}
+        releases: { $each: filteredReleases },
+        tags: { $each: filteredTags }
       }
-    }, {upsert: true});
+    }, { upsert: true });
   }
 
   async updateReposReleases(newReleasesUpdates, newTagsUpdates, changedUpdates) {
@@ -184,7 +184,7 @@ class DB {
 
     const preparedChangedReleases = changedUpdates
       .filter(Boolean)
-      .reduce((acc, {owner, name, releases}) => acc.concat(
+      .reduce((acc, { owner, name, releases }) => acc.concat(
         releases.map((release) => ({
             owner,
             name,
@@ -215,11 +215,11 @@ class DB {
       ...[
         ...preparedNewReleases,
         ...preparedChangedReleases
-      ].map(({filter, update}) => this.repos.updateOne(filter, update))
+      ].map(({ filter, update }) => this.repos.updateOne(filter, update))
     ]);
   }
 
-  async updateRepos({releases, tags}) {
+  async updateRepos({ releases, tags }) {
     const oldRepos = await this.getAllRepos();
 
     const newReleasesUpdates = this.modifyReleases(releases, oldRepos, 'releases', this.filterNewReleases);
@@ -229,20 +229,20 @@ class DB {
     await this.updateReposReleases(newReleasesUpdates, newTagsUpdates, changedUpdates);
 
     const onlyTagsUpdates = newTagsUpdates
-      .filter(({owner, name}) => !newReleasesUpdates
+      .filter(({ owner, name }) => !newReleasesUpdates
         .some((release) => release.owner === owner && release.name === name));
 
     const newReleasesWithTags = newReleasesUpdates
       .map((repoWithRelease) => {
         const similarRepoWithTags = newTagsUpdates
-          .find(({owner, name}) => repoWithRelease.owner === owner && repoWithRelease.name === name);
+          .find(({ owner, name }) => repoWithRelease.owner === owner && repoWithRelease.name === name);
 
         if (similarRepoWithTags) {
           return Object.assign({}, repoWithRelease, {
             releases: [
               ...repoWithRelease.releases,
               ...similarRepoWithTags.tags
-                .filter(({name}) => !repoWithRelease.releases
+                .filter(({ name }) => !repoWithRelease.releases
                   .some((release) => release.name === name))
             ]
           });
@@ -252,23 +252,23 @@ class DB {
       });
 
     return [...newReleasesWithTags, ...onlyTagsUpdates, ...changedUpdates]
-      .map((entry) => entry.tags ? Object.assign({releases: entry.tags}, entry) : entry);
+      .map((entry) => entry.tags ? Object.assign({ releases: entry.tags }, entry) : entry);
   }
 
   async bindUserToRepo(userId, owner, name) {
     const status = await this.addRepo(owner, name);
 
     await Promise.all([
-      this.repos.updateOne({owner, name}, {
+      this.repos.updateOne({ owner, name }, {
         $addToSet: {
           watchedUsers: userId
         }
-      }, {upsert: true}),
-      this.users.updateOne({userId}, {
+      }, { upsert: true }),
+      this.users.updateOne({ userId }, {
         $addToSet: {
-          subscriptions: {owner, name}
+          subscriptions: { owner, name }
         }
-      }, {upsert: true})
+      }, { upsert: true })
     ]);
 
     return status;
@@ -276,23 +276,23 @@ class DB {
 
   async unbindUserFromRepo(userId, owner, name) {
     return await Promise.all([
-      this.repos.updateOne({owner, name}, {
+      this.repos.updateOne({ owner, name }, {
         $pull: {
           watchedUsers: userId
         }
-      }, {upsert: true}),
-      this.users.updateOne({userId}, {
+      }, { upsert: true }),
+      this.users.updateOne({ userId }, {
         $pull: {
-          subscriptions: {owner, name}
+          subscriptions: { owner, name }
         }
-      }, {upsert: true})
+      }, { upsert: true })
     ]);
   }
 
   modifyReleases(entries, repos, type, releasesFilter) {
     const findSimilar = (arr, repo) => arr
       .filter(Boolean)
-      .find(({owner, name}) => owner === repo.owner && name === repo.name);
+      .find(({ owner, name }) => owner === repo.owner && name === repo.name);
 
     return entries
       .filter(Boolean)
