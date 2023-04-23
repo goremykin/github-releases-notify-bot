@@ -1,4 +1,4 @@
-import 'isomorphic-fetch';
+import 'node-fetch';
 import config from '../config.json' assert { type: 'json' };
 
 const makeQuery = (query) => `
