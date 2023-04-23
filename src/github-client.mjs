@@ -1,5 +1,5 @@
-const config = require('../config.json');
-require('isomorphic-fetch');
+import 'isomorphic-fetch';
+import config from '../config.json' assert { type: 'json' };
 
 const makeQuery = (query) => `
 query {
@@ -35,7 +35,6 @@ const getClient = (params) => {
     }
   }
 };
-
 
 const client = getClient({
   url: config.github.url,
@@ -157,7 +156,7 @@ const getManyVersionsInBunches = async (repos, count) => {
   }), { releases: [], tags: [] });
 };
 
-module.exports = {
+export {
   getVersions,
   getManyVersions,
   getManyVersionsInBunches

@@ -1,6 +1,6 @@
-const { MongoClient } = require('mongodb');
+import { MongoClient } from 'mongodb';
 
-class DB {
+class Db {
   constructor(url, name) {
     this.name = name;
     this.url = url;
@@ -18,7 +18,7 @@ class DB {
         keepAlive: true
       });
 
-      console.log("Connected successfully to DB");
+      console.log("Connected successfully to Db");
 
       const db = client.db(this.name);
 
@@ -331,6 +331,6 @@ class DB {
   }
 }
 
-module.exports = {
-  DB
+export {
+  Db
 };

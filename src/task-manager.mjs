@@ -30,6 +30,6 @@ class TaskManager {
   }
 }
 
-module.exports = {
+export {
   TaskManager
 };

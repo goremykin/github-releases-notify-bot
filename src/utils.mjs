@@ -87,7 +87,7 @@ const getLastReleasesInRepos = (repo) => {
   return Object.assign({}, repo, { releases });
 };
 
-module.exports = {
+export {
   getUser,
   getReleaseMessages,
   parseRepo,

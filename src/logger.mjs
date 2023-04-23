@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'fs';
 
 class Logger {
   constructor(path) {
@@ -22,6 +22,6 @@ class Logger {
   }
 }
 
-module.exports = {
+export {
   Logger
 };

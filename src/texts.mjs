@@ -41,6 +41,6 @@ ${
 }
 `;
 
-module.exports = {
+export {
   about, greeting, stats
 };

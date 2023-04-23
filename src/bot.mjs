@@ -1,13 +1,13 @@
-const Telegraf = require('telegraf');
-const { Extra, Markup, session } = require('telegraf');
-const SocksProxyAgent = require('socks-proxy-agent');
+import Telegraf from 'telegraf';
+import SocksProxyAgent from 'socks-proxy-agent';
 
-const keyboards = require('./keyboards');
-const config = require('../config.json');
-const { about, greeting, stats } = require('./texts');
-const { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } = require('./utils');
-const { getVersions } = require('./github-client');
+import * as keyboards from './keyboards.mjs';
+import { about, greeting, stats } from './texts.mjs';
+import { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } from './utils.mjs';
+import { getVersions } from './github-client.mjs';
+import config from '../config.json' assert { type: 'json' };
 
+const { Extra, Markup, session } = Telegraf;
 
 const API_TOKEN = config.telegram.token || '';
 const PROXY_OPTIONS = config.telegram.proxy || '';
@@ -456,6 +456,6 @@ class Bot {
   }
 }
 
-module.exports = {
+export {
   Bot
 };

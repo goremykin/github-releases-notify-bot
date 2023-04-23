@@ -1,17 +1,13 @@
-const cluster = require('cluster');
-
-const config = require('../config.json');
-
-const { Logger } = require('./logger');
-const { DB } = require('./db');
-const { Bot } = require('./bot');
-const { TaskManager } = require('./task-manager');
-const { getManyVersionsInBunches } = require('./github-client');
-
+import cluster from 'cluster';
+import { Logger } from './logger.mjs';
+import { Db } from './db.mjs';
+import { Bot } from './bot.mjs';
+import { TaskManager } from './task-manager.mjs';
+import { getManyVersionsInBunches } from './github-client.mjs';
+import config from '../config.json' assert { type: 'json' };
 
 const logger = new Logger(config.app.logs);
 const tasks = new TaskManager();
-
 const workers = process.env.WORKERS || 1;
 
 process.on('uncaughtException', (err) => {
@@ -27,7 +23,7 @@ process.on('unhandledRejection', (err) => {
 const run = async () => {
   logger.log('Worker initializing');
 
-  const db = new DB(config.mongodb.url, config.mongodb.name);
+  const db = new Db(config.mongodb.url, config.mongodb.name);
 
   try {
     await db.init();
