@@ -1,5 +1,5 @@
 const Telegraf = require('telegraf');
-const {Extra, Markup, memorySession} = require('telegraf');
+const {Extra, Markup, session} = require('telegraf');
 const SocksProxyAgent = require('socks-proxy-agent');
 
 const keyboards = require('./keyboards');
@@ -28,7 +28,7 @@ class Bot {
     this.db = db;
     this.logger = logger;
 
-    this.bot.use(memorySession({
+    this.bot.use(session({
       getSessionKey: (ctx) => `${ctx.chat && ctx.chat.id}`
     }));
     this.bot.catch((err) => {
@@ -183,10 +183,10 @@ class Bot {
     }
   }
 
-  addRepo(ctx) {
+  async addRepo(ctx) {
     ctx.session.action = 'addRepo';
 
-    ctx.answerCallbackQuery('');
+    await ctx.answerCbQuery('');
 
     return this.editMessageText(ctx, 'Please, send me the owner and name of repo (owner/name) or full url', keyboards.backToActions());
   }
@@ -194,7 +194,7 @@ class Bot {
   async editRepos(ctx) {
     const {subscriptions} = await this.db.getUser(getUser(ctx).id);
 
-    ctx.answerCallbackQuery('');
+    await ctx.answerCbQuery('');
 
     if (subscriptions && subscriptions.length) {
       const row = (repo) => [
@@ -224,7 +224,7 @@ class Bot {
   }
 
   async getReleases(ctx) {
-    ctx.answerCallbackQuery('');
+    await ctx.answerCbQuery('');
 
     return this.editMessageText(ctx, 'What list do you want to see?', keyboards.allOrOneRepo());
   }
@@ -232,7 +232,7 @@ class Bot {
   async getReleasesAll(ctx) {
     const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
 
-    ctx.answerCallbackQuery('');
+    await ctx.answerCbQuery('');
 
     return this.sendReleases(
       ctx,
@@ -246,7 +246,7 @@ class Bot {
 
     ctx.session.subscriptions = subscriptions;
 
-    ctx.answerCallbackQuery('');
+    await ctx.answerCbQuery('');
 
     return this.editMessageText(ctx,
       'Select repository',
@@ -259,7 +259,7 @@ class Bot {
   }
 
   async getReleasesOneRepo(ctx) {
-    ctx.answerCallbackQuery('');
+    await ctx.answerCbQuery('');
 
     const index = parseInt(ctx.match[1]);
 
@@ -282,7 +282,7 @@ class Bot {
   }
 
   async getReleasesOneRepoRelease(ctx) {
-    ctx.answerCallbackQuery('');
+    await ctx.answerCbQuery('');
 
     try {
       const repoIndex = parseInt(ctx.match[1]);
@@ -307,7 +307,7 @@ class Bot {
   async getReleasesExpandRelease(ctx) {
     const data = ctx.match[1];
 
-    ctx.answerCallbackQuery('');
+    await ctx.answerCbQuery('');
 
     const index = parseInt(data);
     const releases = ctx.session.releasesDescriptions;
@@ -342,23 +342,23 @@ class Bot {
     }, Promise.resolve());
   }
 
-  actionsList(ctx) {
-    ctx.answerCallbackQuery('');
+  async actionsList(ctx) {
+    await ctx.answerCbQuery('');
 
     return this.editMessageText(ctx, 'Select an action', keyboards.actionsList());
   }
 
-  adminActionsList(ctx) {
-    ctx.answerCallbackQuery('');
+  async adminActionsList(ctx) {
+    await ctx.answerCbQuery('');
 
     return this.editMessageText(ctx, 'Select an action', keyboards.adminActionsList());
   }
 
   sendMessage(ctx) {
-    return this.checkAdminPrivileges(ctx, () => {
+    return this.checkAdminPrivileges(ctx, async () => {
       ctx.session.action = 'sendMessage';
 
-      ctx.answerCallbackQuery('');
+      await ctx.answerCbQuery('');
 
       return this.editMessageText(ctx, 'Please send me a message that will be sent to all users', keyboards.backToAdminActions());
     });
@@ -380,7 +380,7 @@ class Bot {
 
       const usersInGroups = chatsMembersCounts
         .filter(Boolean)
-        .reduce((acc, count) => acc + count);
+        .reduce((acc, count) => acc + count, 0);
 
       const chatsInfo = (await Promise.all(
         groups

@@ -13,6 +13,6 @@
     "isomorphic-fetch": "^2.2.1",
     "mongodb": "^2.2.31",
     "socks-proxy-agent": "^4.0.1",
-    "telegraf": "^3.10.1"
+    "telegraf": "~3.40.0"
   }
 }
