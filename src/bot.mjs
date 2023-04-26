@@ -1,5 +1,5 @@
 import Telegraf from 'telegraf';
-import SocksProxyAgent from 'socks-proxy-agent';
+import { SocksProxyAgent } from 'socks-proxy-agent';
 
 import * as keyboards from './keyboards.mjs';
 import { about, greeting, stats } from './texts.mjs';

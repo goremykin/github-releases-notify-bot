@@ -12,7 +12,7 @@
   "dependencies": {
     "mongodb": "^4.16.0",
     "node-fetch": "^3.3.1",
-    "socks-proxy-agent": "^4.0.1",
+    "socks-proxy-agent": "^7.0.0",
     "telegraf": "~3.40.0"
   }
 }
