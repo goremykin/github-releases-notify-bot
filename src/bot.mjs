@@ -39,6 +39,11 @@ class Bot {
       this.bot.options.username = botInfo.username;
     });
 
+    this.bot.telegram.setMyCommands([
+      { command: '/actions', description: 'Actions' },
+      { command: '/about', description: 'About' }
+    ]).catch(err => logger.error(err))
+
     this.listen();
 
     this.logger.log('Bot listen');
