@@ -28,9 +28,7 @@ class Bot {
     this.db = db;
     this.logger = logger;
 
-    this.bot.use(session({
-      getSessionKey: (ctx) => `${ctx.chat && ctx.chat.id}`
-    }));
+    this.bot.use(session());
     this.bot.catch((err) => {
       this.logger.error(err);
     });
