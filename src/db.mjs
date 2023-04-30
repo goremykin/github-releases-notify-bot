@@ -11,13 +11,12 @@ class Db {
 
   async init() {
     try {
-      const client = await MongoClient.connect(this.url, {
+      const client = new MongoClient(this.url, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
-        socketTimeoutMS: 480000,
-        keepAlive: true
       });
 
+      await client.connect();
       console.log("Connected successfully to Db");
 
       const db = client.db(this.name);
@@ -125,15 +124,13 @@ class Db {
 
   async clearReleases() {
     return await Promise.all([
-      this.repos.update(
+      this.repos.updateMany(
         { "releases.5": { "$exists": 1 } },
-        { "$push": { "releases": { "$each": [], "$slice": -5 } } },
-        { "multi": true }
+        { "$push": { "releases": { "$each": [], "$slice": -5 } } }
       ),
-      this.repos.update(
+      this.repos.updateMany(
         { "tags.5": { "$exists": 1 } },
-        { "$push": { "tags": { "$each": [], "$slice": -5 } } },
-        { "multi": true }
+        { "$push": { "tags": { "$each": [], "$slice": -5 } } }
       )
     ]);
   }
