@@ -63,7 +63,7 @@ const prepareTags = (res) => res ? ((res.data && res.data.repository) || res).re
 
 const releases = (owner, name, count) => `
 repository(owner:"${owner}", name:"${name}") {
-  releases(last: ${count}) {
+  releases(first: ${count}) {
     nodes {
       url,
       isPrerelease,
