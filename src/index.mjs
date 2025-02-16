@@ -4,7 +4,7 @@ import { Db } from './db.mjs';
 import { Bot } from './bot.mjs';
 import { TaskManager } from './task-manager.mjs';
 import { getManyVersionsInBunches } from './github-client.mjs';
-import config from '../config.json' assert { type: 'json' };
+import config from '../config.json' with { type: 'json' };
 
 const logger = new Logger(config.app.logs);
 const tasks = new TaskManager();

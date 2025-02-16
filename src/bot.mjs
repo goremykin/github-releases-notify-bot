@@ -5,7 +5,7 @@ import * as keyboards from './keyboards.mjs';
 import { about, greeting, stats } from './texts.mjs';
 import { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } from './utils.mjs';
 import { getVersions } from './github-client.mjs';
-import config from '../config.json' assert { type: 'json' };
+import config from '../config.json' with { type: 'json' };
 
 const { Extra, Markup, session } = Telegraf;
 

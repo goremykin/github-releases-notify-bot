@@ -1,5 +1,5 @@
 import 'node-fetch';
-import config from '../config.json' assert { type: 'json' };
+import config from '../config.json' with { type: 'json' };
 
 const makeQuery = (query) => `
 query {
