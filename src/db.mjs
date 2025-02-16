@@ -11,10 +11,7 @@ class Db {
 
   async init() {
     try {
-      const client = new MongoClient(this.url, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-      });
+      const client = new MongoClient(this.url);
 
       await client.connect();
       console.log("Connected successfully to Db");

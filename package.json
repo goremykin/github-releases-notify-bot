@@ -10,9 +10,9 @@
   "author": "Nikolay Ryabov",
   "license": "MIT",
   "dependencies": {
-    "mongodb": "^5.3.0",
-    "node-fetch": "^3.3.1",
-    "socks-proxy-agent": "^7.0.0",
+    "mongodb": "^6.13.0",
+    "node-fetch": "^3.3.2",
+    "socks-proxy-agent": "^8.0.5",
     "telegraf": "^3.40.0"
   }
 }
