@@ -50,7 +50,12 @@ const prepareRelease = ({ url, isPrerelease, description, tag }) => ({
   name: tag && tag.name
 });
 
-const prepareReleases = (res) => res ? ((res.data && res.data.repository) || res).releases.nodes.filter(Boolean).map(prepareRelease) : [];
+const prepareReleases = (res) => res
+  ? ((res.data && res.data.repository) || res).releases.nodes
+    .filter(Boolean)
+    .filter(({ isPrerelease }) => config.app.includePrerelease || !isPrerelease)
+    .map(prepareRelease)
+  : [];
 
 const prepareTag = (tag) => ({
   url: '',

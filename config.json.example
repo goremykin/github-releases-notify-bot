@@ -15,6 +15,7 @@
   "app": {
     "updateInterval": 300,
     "logs": "./app.log",
-    "restartRate": 180
+    "restartRate": 180,
+    "includePrerelease": false
   }
 }
