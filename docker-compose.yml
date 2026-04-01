@@ -8,6 +8,6 @@ services:
     restart: always
     build: .
     volumes:
-      - ${PWD}/config.json:/config.json
+      - ${PWD}/config.json:/app/config.json
     depends_on:
       - mongo
