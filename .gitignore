@@ -3,3 +3,4 @@
 /build
 /mongo
 config.json
+.pnpm-store
