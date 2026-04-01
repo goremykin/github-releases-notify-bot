@@ -76,6 +76,7 @@ export class Bot {
     this.bot.callbackQuery(/^editRepos:delete:(.+)$/,                      this.wrapAction(this.editReposDelete));
     this.bot.callbackQuery('sendMessage',      this.wrapAction(this.sendMessage));
     this.bot.callbackQuery('getStats',         this.wrapAction(this.getStats));
+    this.bot.callbackQuery('getRepoStats',     this.wrapAction(this.getRepoStats));
     this.bot.callbackQuery('forceCheck',       this.wrapAction(this.forceCheck));
 
     this.bot.on('message:text', this.wrapAction(this.handleAnswer));
@@ -415,6 +416,28 @@ export class Bot {
         averageSubscriptionsPerUser, averageWatchPerRepo,
         usersInGroups, chatsInfo,
       }));
+    });
+  }
+
+  private async getRepoStats(ctx: BotContext): Promise<void> {
+    await this.checkAdminPrivileges(ctx, async () => {
+      await ctx.answerCallbackQuery();
+
+      const repos = await this.db.getAllReposNames();
+
+      if (!repos.length) {
+        await this.editMessageText(ctx, 'No repositories yet.', { reply_markup: keyboards.backToAdminActions() });
+        return;
+      }
+
+      const lines = repos
+        .sort((a, b) => b.watchedUsers.length - a.watchedUsers.length)
+        .map(({ owner, name, watchedUsers }) => `${owner}/${name} — ${watchedUsers.length}`);
+
+      await this.editMessageText(ctx,
+        `Repositories (${repos.length}):\n\n${lines.join('\n')}`,
+        { reply_markup: keyboards.backToAdminActions() }
+      );
     });
   }
 

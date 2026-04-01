@@ -8,9 +8,8 @@ export const actionsList = (): InlineKeyboard =>
 
 export const adminActionsList = (): InlineKeyboard =>
   new InlineKeyboard()
-    .text('Send message', 'sendMessage')
-    .text('Stats', 'getStats')
-    .text('Force check', 'forceCheck');
+    .text('Send message', 'sendMessage').text('Stats', 'getStats').row()
+    .text('Force check', 'forceCheck').text('Repos', 'getRepoStats');
 
 export const backToAdminActions = (): InlineKeyboard =>
   new InlineKeyboard().text('Back', 'adminActionsList');
