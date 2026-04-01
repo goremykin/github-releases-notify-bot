@@ -107,6 +107,10 @@ export class Bot {
     };
   }
 
+  stop(): void {
+    this.bot.stop();
+  }
+
   async notifyUsers(repos: RepoUpdate[]): Promise<void> {
     await this.sendReleases(
       null,
