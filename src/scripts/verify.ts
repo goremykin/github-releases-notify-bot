@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MongoExportDump } from './mongo-export.ts';
-import { config } from '../src/config.ts';
+import { config } from '../config.ts';
 
 interface MongoUser {
   userId: number;

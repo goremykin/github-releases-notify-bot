@@ -2,7 +2,7 @@ import { MongoClient } from 'mongodb';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { config } from '../src/config.ts';
+import { config } from '../config.ts';
 
 export interface ExportResult {
   users: number;

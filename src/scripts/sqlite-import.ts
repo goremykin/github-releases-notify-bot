@@ -3,8 +3,8 @@ import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MongoExportDump } from './mongo-export.ts';
-import { config } from '../src/config.ts';
-import { MIGRATIONS } from '../src/migrations.ts';
+import { config } from '../config.ts';
+import { MIGRATIONS } from '../migrations.ts';
 
 export interface ImportResult {
   users: number;
