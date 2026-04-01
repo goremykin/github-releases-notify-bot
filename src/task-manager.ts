@@ -30,4 +30,14 @@ export class TaskManager {
     Promise.resolve(this.tasks[name].cb())
       .then((data) => this.tasks[name].subscriptions.forEach((sub) => sub(data)));
   }
+
+  trigger(name: string): Promise<void> {
+    return new Promise((resolve) => {
+      Promise.resolve(this.tasks[name].cb())
+        .then((data) => {
+          this.tasks[name].subscriptions.forEach((sub) => sub(data));
+          resolve();
+        });
+    });
+  }
 }

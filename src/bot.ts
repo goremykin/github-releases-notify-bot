@@ -8,6 +8,7 @@ import { getVersions } from './github-client.ts';
 import { config } from './config.ts';
 import type { Db } from './db.ts';
 import type { Logger } from './logger.ts';
+import type { TaskManager } from './task-manager.ts';
 import type { RepoDocument, RepoUpdate } from './types.ts';
 
 const { Extra, Markup, session } = Telegraf as {
@@ -32,14 +33,16 @@ export class Bot {
   private bot: any;
   private db: Db;
   private logger: Logger;
+  private tasks: TaskManager;
 
-  constructor(db: Db, logger: Logger) {
+  constructor(db: Db, logger: Logger, tasks: TaskManager) {
     this.bot = new (Telegraf as { new(token: string, opts: unknown): unknown })(API_TOKEN, {
       telegram: PROXY_OPTIONS ? { agent: new SocksProxyAgent(PROXY_OPTIONS) } : {},
       channelMode: false
     });
     this.db = db;
     this.logger = logger;
+    this.tasks = tasks;
 
     this.bot.use(session());
     this.bot.catch((err: Error) => { this.logger.error({ err }, 'Bot error'); });
@@ -77,7 +80,8 @@ export class Bot {
       ['editRepos', this.editRepos],
       [/^editRepos:delete:(.+)$/, this.editReposDelete],
       ['sendMessage', this.sendMessage],
-      ['getStats', this.getStats]
+      ['getStats', this.getStats],
+      ['forceCheck', this.forceCheck]
     ];
 
     commands.forEach(([command, fn]) => this.bot.command(command, this.wrapAction(fn)));
@@ -380,6 +384,15 @@ export class Bot {
       const averageWatchPerRepo = (repos.reduce((acc, { watchedUsers = [] }) => acc + watchedUsers.length, 0) / repos.length).toFixed(2);
 
       return ctx.reply(stats({ groupsCount, usersCount, reposCount, averageSubscriptionsPerUser, averageWatchPerRepo, usersInGroups, chatsInfo }));
+    });
+  }
+
+  private forceCheck(ctx: Ctx): Promise<unknown> {
+    return this.checkAdminPrivileges(ctx, async () => {
+      await ctx.answerCbQuery('');
+      await this.editMessageText(ctx, 'Checking...', keyboards.backToAdminActions());
+      await this.tasks.trigger('releases');
+      return this.editMessageText(ctx, 'Done!', keyboards.backToAdminActions());
     });
   }
 

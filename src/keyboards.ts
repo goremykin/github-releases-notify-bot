@@ -15,6 +15,7 @@ export const actionsList = () => Markup.inlineKeyboard([
 export const adminActionsList = () => Markup.inlineKeyboard([
   Markup.callbackButton('Send message', 'sendMessage'),
   Markup.callbackButton('Stats', 'getStats'),
+  Markup.callbackButton('Force check', 'forceCheck'),
 ]).extra();
 
 export const backToAdminActions = () => Markup.inlineKeyboard([

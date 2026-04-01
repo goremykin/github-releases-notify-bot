@@ -28,7 +28,7 @@ const run = async (): Promise<void> => {
     logger.error({ err: error }, 'DB init failed');
   }
 
-  const bot = new Bot(db, logger);
+  const bot = new Bot(db, logger, tasks);
 
   const updateReleases = async () => {
     try {
