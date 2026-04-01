@@ -10,7 +10,7 @@ import { config } from './config.ts';
 import { mongoExport } from './scripts/mongo-export.ts';
 import { sqliteImport } from './scripts/sqlite-import.ts';
 import { verify } from './scripts/verify.ts';
-import type { Db } from './db.ts';
+import type { Db } from './db.sqlite.ts';
 import type { Logger } from './logger.ts';
 import type { TaskManager } from './task-manager.ts';
 import type { RepoDocument, RepoUpdate } from './types.ts';

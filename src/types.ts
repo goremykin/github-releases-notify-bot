@@ -26,7 +26,7 @@ export interface AppConfig {
 
 export interface Config {
   github: GithubConfig;
-  mongodb: MongoConfig;
+  mongodb?: MongoConfig;
   sqlite: SqliteConfig;
   telegram: TelegramConfig;
   adminUserName: string;

@@ -19,8 +19,6 @@ const parsed = JSON.parse(raw) as Partial<Config>;
 const required: Array<[string, unknown]> = [
   ['telegram.token', parsed.telegram?.token],
   ['github.token', parsed.github?.token],
-  ['mongodb.url', parsed.mongodb?.url],
-  ['mongodb.name', parsed.mongodb?.name],
 ];
 const missing = required.filter(([, value]) => !value).map(([key]) => key);
 if (missing.length > 0) {

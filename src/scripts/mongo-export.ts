@@ -17,6 +17,8 @@ export interface MongoExportDump {
 }
 
 export async function mongoExport(dataDir: string): Promise<ExportResult> {
+  if (!config.mongodb) throw new Error('config.mongodb is not set');
+
   mkdirSync(dataDir, { recursive: true });
   const outputPath = resolve(dataDir, 'export.json');
 

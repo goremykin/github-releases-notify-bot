@@ -1,6 +1,6 @@
 import cluster from 'cluster';
 import { logger } from './logger.ts';
-import { Db } from './db.ts';
+import { Db } from './db.sqlite.ts';
 import { Bot } from './bot.ts';
 import { TaskManager } from './task-manager.ts';
 import { getManyVersionsInBunches } from './github-client.ts';
@@ -20,7 +20,7 @@ process.on('unhandledRejection', (err: unknown) => {
 const run = async (): Promise<void> => {
   logger.info('Worker initializing');
 
-  const db = new Db(config.mongodb.url, config.mongodb.name);
+  const db = new Db(config.sqlite.path);
 
   try {
     await db.init();
