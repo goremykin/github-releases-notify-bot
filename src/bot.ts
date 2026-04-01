@@ -21,8 +21,8 @@ const { Extra, Markup, session } = Telegraf as {
   session: () => unknown;
 };
 
-const API_TOKEN: string = config.telegram.token || '';
-const PROXY_OPTIONS: string = config.telegram.proxy || '';
+const API_TOKEN: string = config.telegram.token;
+const PROXY_OPTIONS: string = config.telegram.proxy;
 
 const PREVIEW_RELEASES_COUNT = -10;
 const FIRST_UPDATE_RELEASES_COUNT = 5;

@@ -50,7 +50,7 @@ const run = async (): Promise<void> => {
     }
   };
 
-  tasks.add('releases', updateReleases, config.app.updateInterval || 60 * 5);
+  tasks.add('releases', updateReleases, config.app.updateInterval);
   tasks.subscribe('releases', bot.notifyUsers.bind(bot));
 
   process.on('SIGTERM', () => {
