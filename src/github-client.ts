@@ -1,4 +1,4 @@
-import config from '../config.json' with { type: 'json' };
+import { config } from './config.ts';
 import type { Release, RepoIdentifier, RepoWithReleases, RepoWithTags, VersionUpdates } from './types.ts';
 
 interface GraphQLClient {

@@ -5,8 +5,7 @@
     "module": "nodenext",
     "rewriteRelativeImportExtensions": true,
     "erasableSyntaxOnly": true,
-    "verbatimModuleSyntax": true,
-    "resolveJsonModule": true
+    "verbatimModuleSyntax": true
   },
   "include": ["src/**/*"]
 }

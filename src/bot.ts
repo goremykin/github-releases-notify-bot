@@ -5,7 +5,7 @@ import * as keyboards from './keyboards.ts';
 import { about, greeting, stats } from './texts.ts';
 import { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } from './utils.ts';
 import { getVersions } from './github-client.ts';
-import config from '../config.json' with { type: 'json' };
+import { config } from './config.ts';
 import type { Db } from './db.ts';
 import type { Logger } from './logger.ts';
 import type { RepoDocument, RepoUpdate } from './types.ts';

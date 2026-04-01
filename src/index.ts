@@ -4,7 +4,7 @@ import { Db } from './db.ts';
 import { Bot } from './bot.ts';
 import { TaskManager } from './task-manager.ts';
 import { getManyVersionsInBunches } from './github-client.ts';
-import config from '../config.json' with { type: 'json' };
+import { config } from './config.ts';
 
 const tasks = new TaskManager();
 const workers = parseInt(process.env.WORKERS ?? '1', 10);
