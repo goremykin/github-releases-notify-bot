@@ -70,4 +70,13 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 3,
+    description: 'Drop redundant indexes',
+    sql: `
+      DROP INDEX IF EXISTS idx_subscriptions_user;
+      DROP INDEX IF EXISTS idx_releases_repo;
+      DROP INDEX IF EXISTS idx_tags_repo;
+    `,
+  },
 ];
