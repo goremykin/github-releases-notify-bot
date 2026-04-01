@@ -5,7 +5,7 @@
 
 The bot allows you to receive notifications in a telegram if a new release (or a new tag appears in the repository) of your favorite software is available in GitHub.
 
-Bot available in Telegram: [@github_releases_notify_bot](https://telegram.me/github_releases_notify_bot)
+Bot available in Telegram: [@ReleaseNotifier_Bot](https://telegram.me/ReleaseNotifier_Bot)
 
 ## Commands
 ```
