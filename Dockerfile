@@ -1,4 +1,6 @@
-FROM node:24-alpine
-COPY . .
-RUN npm ci
-CMD npm start
+FROM node:25-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY src/ ./src/
+CMD node src/index.ts
