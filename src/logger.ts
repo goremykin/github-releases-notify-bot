@@ -1,7 +1,7 @@
 import pino from 'pino';
 import { config } from './config.ts';
 
-const pretty = config.app.prettyLogs ?? true;
+const pretty = config.app.prettyLogs;
 
 export const logger = pino(
   { name: 'github-releases-notify-bot' },

@@ -1,6 +1,5 @@
 /node_modules
 /.idea
-/build
-/mongo
+/data
 config.json
 .pnpm-store

@@ -3,9 +3,8 @@ export interface GithubConfig {
   url: string;
 }
 
-export interface MongoConfig {
-  name: string;
-  url: string;
+export interface SqliteConfig {
+  path: string;
 }
 
 export interface TelegramConfig {
@@ -22,7 +21,7 @@ export interface AppConfig {
 
 export interface Config {
   github: GithubConfig;
-  mongodb: MongoConfig;
+  sqlite: SqliteConfig;
   telegram: TelegramConfig;
   adminUserName: string;
   app: AppConfig;

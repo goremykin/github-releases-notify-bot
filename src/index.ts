@@ -1,6 +1,6 @@
 import cluster from 'cluster';
 import { logger } from './logger.ts';
-import { Db } from './db.ts';
+import { Db } from './db.sqlite.ts';
 import { Bot } from './bot.ts';
 import { TaskManager } from './task-manager.ts';
 import { getManyVersionsInBunches } from './github-client.ts';
@@ -20,7 +20,7 @@ process.on('unhandledRejection', (err: unknown) => {
 const run = async (): Promise<void> => {
   logger.info('Worker initializing');
 
-  const db = new Db(config.mongodb.url, config.mongodb.name);
+  const db = new Db(config.sqlite.path);
 
   try {
     await db.init();
@@ -50,8 +50,19 @@ const run = async (): Promise<void> => {
     }
   };
 
-  tasks.add('releases', updateReleases, config.app.updateInterval || 60 * 5);
+  tasks.add('releases', updateReleases, config.app.updateInterval);
   tasks.subscribe('releases', bot.notifyUsers.bind(bot));
+
+  process.on('SIGTERM', () => {
+    logger.info('Worker received SIGTERM, shutting down');
+    tasks.stop('releases')
+      .then(() => { bot.stop(); })
+      .then(() => { process.exit(0); })
+      .catch((err: unknown) => {
+        logger.error({ err }, 'Error during shutdown');
+        process.exit(1);
+      });
+  });
 
   logger.info('Worker ready');
 };
@@ -68,10 +79,27 @@ if (cluster.isPrimary) {
     forkWorker();
   }
 
+  let isShuttingDown = false;
+
   cluster.on('exit', (worker) => {
+    if (isShuttingDown) {
+      if (Object.keys(cluster.workers ?? {}).length === 0) {
+        logger.info('All workers exited');
+        process.exit(0);
+      }
+      return;
+    }
     const timeout = config.app.restartRate;
     logger.warn({ pid: worker.process.pid, restartIn: timeout }, 'Worker died, restarting');
     setTimeout(() => forkWorker(), timeout * 1000);
+  });
+
+  process.on('SIGTERM', () => {
+    logger.info('Primary received SIGTERM, stopping workers');
+    isShuttingDown = true;
+    for (const worker of Object.values(cluster.workers ?? {})) {
+      worker?.process.kill('SIGTERM');
+    }
   });
 } else {
   run();

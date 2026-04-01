@@ -6,7 +6,7 @@ import { about, greeting, stats } from './texts.ts';
 import { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } from './utils.ts';
 import { getVersions } from './github-client.ts';
 import { config } from './config.ts';
-import type { Db } from './db.ts';
+import type { Db } from './db.sqlite.ts';
 import type { Logger } from './logger.ts';
 import type { TaskManager } from './task-manager.ts';
 import type { RepoDocument, RepoUpdate } from './types.ts';
@@ -17,8 +17,8 @@ const { Extra, Markup, session } = Telegraf as {
   session: () => unknown;
 };
 
-const API_TOKEN: string = config.telegram.token || '';
-const PROXY_OPTIONS: string = config.telegram.proxy || '';
+const API_TOKEN: string = config.telegram.token;
+const PROXY_OPTIONS: string = config.telegram.proxy;
 
 const PREVIEW_RELEASES_COUNT = -10;
 const FIRST_UPDATE_RELEASES_COUNT = 5;
@@ -98,6 +98,10 @@ export class Bot {
         this.logger.error({ err: error }, 'uncaughtException');
       }
     };
+  }
+
+  stop(): void {
+    this.bot.stop();
   }
 
   async notifyUsers(repos: RepoUpdate[]): Promise<void> {
