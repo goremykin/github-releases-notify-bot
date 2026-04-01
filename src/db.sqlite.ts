@@ -277,6 +277,13 @@ export class Db {
     );
     if (!repoRow) return;
     this.db.prepare('DELETE FROM subscriptions WHERE user_id = ? AND repo_id = ?').run(userId, repoRow.id);
+
+    const remaining = this.queryOne<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM subscriptions WHERE repo_id = ?', repoRow.id
+    );
+    if (remaining?.count === 0) {
+      this.db.prepare('DELETE FROM repos WHERE id = ?').run(repoRow.id);
+    }
   }
 
   private query<T>(sql: string, ...params: SQLValue[]): T[] {
