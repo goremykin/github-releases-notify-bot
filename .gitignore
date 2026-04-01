@@ -2,6 +2,5 @@
 /.idea
 /build
 /mongo
-npm-debug.log*
 config.json
-app.log
+.pnpm-store

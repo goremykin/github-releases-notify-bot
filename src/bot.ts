@@ -1,60 +1,70 @@
 import Telegraf from 'telegraf';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 
-import * as keyboards from './keyboards.mjs';
-import { about, greeting, stats } from './texts.mjs';
-import { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } from './utils.mjs';
-import { getVersions } from './github-client.mjs';
-import config from '../config.json' with { type: 'json' };
+import * as keyboards from './keyboards.ts';
+import { about, greeting, stats } from './texts.ts';
+import { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } from './utils.ts';
+import { getVersions } from './github-client.ts';
+import { config } from './config.ts';
+import type { Db } from './db.ts';
+import type { Logger } from './logger.ts';
+import type { RepoDocument, RepoUpdate } from './types.ts';
 
-const { Extra, Markup, session } = Telegraf;
+const { Extra, Markup, session } = Telegraf as {
+  Extra: { markdown: () => unknown };
+  Markup: { urlButton: (t: string, u: string) => unknown; callbackButton: (t: string, a: string) => unknown; inlineKeyboard: (b: unknown[]) => { extra: () => unknown } };
+  session: () => unknown;
+};
 
-const API_TOKEN = config.telegram.token || '';
-const PROXY_OPTIONS = config.telegram.proxy || '';
+const API_TOKEN: string = config.telegram.token || '';
+const PROXY_OPTIONS: string = config.telegram.proxy || '';
 
 const PREVIEW_RELEASES_COUNT = -10;
 const FIRST_UPDATE_RELEASES_COUNT = 5;
 const UPDATE_INTERVAL = Math.floor((config.app.updateInterval / 60) * 100) / 100;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Ctx = any;
+type ActionFn = (ctx: Ctx, next: (() => void) | undefined) => Promise<unknown>;
 
-class Bot {
-  constructor(db, logger) {
-    this.bot = new Telegraf(API_TOKEN, {
-      telegram: PROXY_OPTIONS ? {
-        agent: new SocksProxyAgent(PROXY_OPTIONS)
-      } : {},
+export class Bot {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private bot: any;
+  private db: Db;
+  private logger: Logger;
+
+  constructor(db: Db, logger: Logger) {
+    this.bot = new (Telegraf as { new(token: string, opts: unknown): unknown })(API_TOKEN, {
+      telegram: PROXY_OPTIONS ? { agent: new SocksProxyAgent(PROXY_OPTIONS) } : {},
       channelMode: false
     });
     this.db = db;
     this.logger = logger;
 
     this.bot.use(session());
-    this.bot.catch((err) => {
-      this.logger.error(err);
-    });
+    this.bot.catch((err: Error) => { this.logger.error({ err }, 'Bot error'); });
 
-    this.bot.telegram.getMe().then((botInfo) => {
+    this.bot.telegram.getMe().then((botInfo: { username: string }) => {
       this.bot.options.username = botInfo.username;
     });
 
     this.bot.telegram.setMyCommands([
       { command: '/actions', description: 'Actions' },
       { command: '/about', description: 'About' }
-    ]).catch(err => logger.error(err))
+    ]).catch((err: Error) => logger.error({ err }, 'setMyCommands failed'));
 
     this.listen();
-
-    this.logger.log('Bot listen');
+    this.logger.info('Bot listen');
   }
 
-  listen() {
-    const commands = [
+  private listen(): void {
+    const commands: [string, ActionFn][] = [
       ['start', this.start],
       ['actions', this.actions],
       ['about', this.about],
       ['admin', this.admin]
     ];
-    const actions = [
+    const actions: [string | RegExp, ActionFn][] = [
       ['actionsList', this.actionsList],
       ['adminActionsList', this.adminActionsList],
       ['addRepo', this.addRepo],
@@ -72,73 +82,63 @@ class Bot {
 
     commands.forEach(([command, fn]) => this.bot.command(command, this.wrapAction(fn)));
     actions.forEach(([action, fn]) => this.bot.action(action, this.wrapAction(fn)));
-
     this.bot.hears(/.+/, this.wrapAction(this.handleAnswer));
-
     this.bot.startPolling();
   }
 
-  wrapAction(action) {
-    return async (...args) => {
+  private wrapAction(action: ActionFn): (...args: unknown[]) => Promise<unknown> {
+    return async (...args: unknown[]) => {
       try {
-        return await action.apply(this, args);
+        return await action.apply(this, args as Parameters<ActionFn>);
       } catch (error) {
-        this.logger.error(`uncaughtException: ${error.message}`);
-        this.logger.error(error.stack.toString());
+        this.logger.error({ err: error }, 'uncaughtException');
       }
-    }
+    };
   }
 
-  async notifyUsers(repos) {
+  async notifyUsers(repos: RepoUpdate[]): Promise<void> {
     await this.sendReleases(
       null,
       repos,
-      async (markdown, key, { watchedUsers }) => {
+      async (markdown: string, _key: unknown, { watchedUsers }: { watchedUsers: number[] }) => {
         await Promise.all(watchedUsers.map(async (userId) => {
           try {
             await this.bot.telegram.sendMessage(userId, markdown, Extra.markdown());
           } catch (error) {
-            this.logger.error(`Cannot send releases to user: ${userId}`);
-            this.logger.error(error.stack.toString());
+            this.logger.error({ err: error, userId }, 'Cannot send release to user');
           }
         }));
       }
     );
-  };
-
-  async start(ctx) {
-    await ctx.reply(greeting());
-
-    return await this.actions(ctx);
   }
 
-  async actions(ctx) {
+  private async start(ctx: Ctx): Promise<void> {
+    await ctx.reply(greeting());
+    return this.actions(ctx);
+  }
+
+  private async actions(ctx: Ctx): Promise<void> {
     ctx.session.action = null;
-
     const user = getUser(ctx);
-
     await this.db.createUser(user);
-
     return ctx.reply('Select an action', keyboards.actionsList());
   }
 
-  admin(ctx) {
-    return this.checkAdminPrivileges(ctx, () => {
-      return ctx.reply('Select an action', keyboards.adminActionsList());
-    });
+  private admin(ctx: Ctx): Promise<unknown> {
+    return this.checkAdminPrivileges(ctx, () => ctx.reply('Select an action', keyboards.adminActionsList()));
   }
 
-  about(ctx) {
+  private about(ctx: Ctx): Promise<unknown> {
     return ctx.replyWithMarkdown(about(UPDATE_INTERVAL));
   }
 
-  async handleAnswer(ctx, next) {
-    const str = ctx.match[0];
+  private async handleAnswer(ctx: Ctx, next: (() => void) | undefined): Promise<unknown> {
+    const str: string = ctx.match[0];
     const user = getUser(ctx);
 
     if (ctx.session.action) {
       switch (ctx.session.action) {
-        case 'addRepo':
+        case 'addRepo': {
           const repo = parseRepo(str);
 
           if (repo) {
@@ -147,183 +147,164 @@ class Bot {
             if (!hasRepoInDB) {
               try {
                 const releases = await getVersions(repo.owner, repo.name, FIRST_UPDATE_RELEASES_COUNT);
-
                 await this.db.addRepo(repo.owner, repo.name);
                 await this.db.updateRepo(repo.owner, repo.name, releases);
-              } catch (error) {
+              } catch {
                 return ctx.reply('Cannot subscribe to this repo. Please enter another:');
               }
             }
 
             await this.db.bindUserToRepo(user.id, repo.owner, repo.name);
-
             ctx.session.action = null;
-
             return ctx.reply('Done! Add one more?', keyboards.addOneMoreRepo());
           } else {
             return ctx.reply('Cannot subscribe to this repo. Please enter another:');
           }
+        }
         case 'sendMessage':
           return this.checkAdminPrivileges(ctx, async () => {
             const users = await this.db.getAllUsers();
 
             await Promise.all(users.map(async ({ userId, username, firstName, lastName }) => {
               try {
-                await this.bot.telegram.sendMessage(userId, ctx.match.input, Extra.markdown())
-              } catch (err) {
-                this.logger.error(`Cannot send message to user: ${userId} | ${username} | ${firstName} | ${lastName}`);
+                await this.bot.telegram.sendMessage(userId, ctx.match.input, Extra.markdown());
+              } catch {
+                this.logger.error({ userId, username, firstName, lastName }, 'Cannot send message to user');
               }
             }));
 
             ctx.session.action = null;
-
             return ctx.reply('Message sent');
           });
         default:
           ctx.session.action = null;
-          return next();
+          return next?.();
       }
     }
   }
 
-  async addRepo(ctx) {
+  private async addRepo(ctx: Ctx): Promise<unknown> {
     ctx.session.action = 'addRepo';
-
     await ctx.answerCbQuery('');
-
     return this.editMessageText(ctx, 'Please, send me the owner and name of repo (owner/name) or full url', keyboards.backToActions());
   }
 
-  async editRepos(ctx) {
-    const { subscriptions } = await this.db.getUser(getUser(ctx).id);
+  private async editRepos(ctx: Ctx): Promise<unknown> {
+    const user = await this.db.getUser(getUser(ctx).id);
+    const subscriptions = user?.subscriptions ?? [];
 
     await ctx.answerCbQuery('');
 
-    if (subscriptions && subscriptions.length) {
-      const row = (repo) => [
+    if (subscriptions.length) {
+      const row = (repo: { owner: string; name: string }) => [
         Markup.urlButton(`${repo.owner}/${repo.name}`, `https://github.com/${repo.owner}/${repo.name}`),
         Markup.callbackButton('🗑️', `editRepos:delete:${repo.owner}/${repo.name}`)
       ];
 
       return this.editMessageText(ctx,
         'Your subscriptions',
-        Markup.inlineKeyboard([...subscriptions.map(row), [Markup.callbackButton('Back', `actionsList`)]]).extra()
+        Markup.inlineKeyboard([...subscriptions.map(row), [Markup.callbackButton('Back', 'actionsList')]]).extra()
       );
     } else {
-      this.editMessageText(ctx,
-        'You do not have a subscriptions',
-        keyboards.backToActions()
-      );
+      return this.editMessageText(ctx, 'You do not have a subscriptions', keyboards.backToActions());
     }
   }
 
-  async editReposDelete(ctx) {
+  private async editReposDelete(ctx: Ctx): Promise<unknown> {
     const user = getUser(ctx);
-    const [owner, name] = ctx.match[1].split('/');
-
+    const [owner, name] = (ctx.match[1] as string).split('/');
     await this.db.unbindUserFromRepo(user.id, owner, name);
-
     return this.editRepos(ctx);
   }
 
-  async getReleases(ctx) {
+  private async getReleases(ctx: Ctx): Promise<unknown> {
     await ctx.answerCbQuery('');
-
     return this.editMessageText(ctx, 'What list do you want to see?', keyboards.allOrOneRepo());
   }
 
-  async getReleasesAll(ctx) {
+  private async getReleasesAll(ctx: Ctx): Promise<unknown> {
     const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
-
     await ctx.answerCbQuery('');
-
-    return this.sendReleases(
-      ctx,
-      repos.map(getLastReleasesInRepos),
-      ctx.replyWithHTML
-    );
+    return this.sendReleases(ctx, repos.map(getLastReleasesInRepos), ctx.replyWithHTML);
   }
 
-  async getReleasesOne(ctx) {
-    const { subscriptions } = await this.db.getUser(getUser(ctx).id);
+  private async getReleasesOne(ctx: Ctx): Promise<unknown> {
+    const user = await this.db.getUser(getUser(ctx).id);
+    const subscriptions = user?.subscriptions ?? [];
 
     ctx.session.subscriptions = subscriptions;
-
     await ctx.answerCbQuery('');
 
-    return this.editMessageText(ctx,
-      'Select repository',
+    return this.editMessageText(ctx, 'Select repository',
       keyboards.table(
         'getReleases',
         'getReleases:one',
-        subscriptions.map(({ owner, name }) => `${owner}/${name}`)
+        subscriptions.map(({ owner, name }: { owner: string; name: string }) => `${owner}/${name}`)
       )
-    )
+    );
   }
 
-  async getReleasesOneRepo(ctx) {
+  private async getReleasesOneRepo(ctx: Ctx): Promise<unknown> {
     await ctx.answerCbQuery('');
 
     const index = parseInt(ctx.match[1]);
 
-    if (ctx.session.subscriptions && ctx.session.subscriptions[index]) {
+    if (ctx.session.subscriptions?.[index]) {
       const { owner, name } = ctx.session.subscriptions[index];
-
       const repo = await this.db.getRepo(owner, name);
+      if (!repo) return;
 
-      const result = this.editMessageText(ctx,
-        'Select release',
+      const result = this.editMessageText(ctx, 'Select release',
         keyboards.table(
-          `getReleases:one`,
+          'getReleases:one',
           `getReleases:one:${index}:release`,
-          repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({ name, isPrerelease }) => `${name}${isPrerelease ? ' (pre-release)' : ''}`)
+          repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({ name, isPrerelease }: { name: string; isPrerelease: boolean }) =>
+            `${name}${isPrerelease ? ' (pre-release)' : ''}`)
         )
       );
 
-      return this.checkForExeption(ctx, result);
+      return this.checkForException(ctx, result);
     }
   }
 
-  async getReleasesOneRepoRelease(ctx) {
+  private async getReleasesOneRepoRelease(ctx: Ctx): Promise<unknown> {
     await ctx.answerCbQuery('');
 
     try {
       const repoIndex = parseInt(ctx.match[1]);
       const releaseIndex = parseInt(ctx.match[2]);
 
-      if (ctx.session.subscriptions && ctx.session.subscriptions[repoIndex]) {
+      if (ctx.session.subscriptions?.[repoIndex]) {
         const { owner, name } = ctx.session.subscriptions[repoIndex];
-
         const repo = await this.db.getRepo(owner, name);
+        if (!repo) return;
 
         return this.sendReleases(
           null,
-          [Object.assign(repo, { releases: [repo.releases.slice(PREVIEW_RELEASES_COUNT)[releaseIndex]] })],
+          [{ ...repo, releases: [repo.releases.slice(PREVIEW_RELEASES_COUNT)[releaseIndex]] }],
           ctx.replyWithMarkdown
         );
       }
-    } catch (error) {
+    } catch {
       return this.dataBrokenException(ctx);
     }
   }
 
-  async getReleasesExpandRelease(ctx) {
-    const data = ctx.match[1];
-
+  private async getReleasesExpandRelease(ctx: Ctx): Promise<unknown> {
+    const data: string = ctx.match[1];
     await ctx.answerCbQuery('');
 
     const index = parseInt(data);
-    const releases = ctx.session.releasesDescriptions;
+    const releases: string[][] | undefined = ctx.session.releasesDescriptions;
 
-    if (releases && releases[index]) {
+    if (releases?.[index]) {
       if (releases[index].length <= 1) {
         const result = await this.editMessageText(ctx, releases[index][0], Extra.markdown());
-
-        return this.checkForExeption(ctx, result);
+        return result === null ? this.dataBrokenException(ctx) : result;
       } else {
         return releases[index]
-          .reduce((promise, message) => promise
-            .then(() => ctx.replyWithMarkdown(message, Extra.markdown())),
+          .reduce((promise: Promise<unknown>, message: string) =>
+            promise.then(() => ctx.replyWithMarkdown(message, Extra.markdown())),
             ctx.deleteMessage(ctx.update.callback_query.id));
       }
     } else {
@@ -331,43 +312,43 @@ class Bot {
     }
   }
 
-  async sendReleases(ctx, repos, send) {
+  private async sendReleases(
+    ctx: Ctx | null,
+    repos: Array<RepoDocument | RepoUpdate>,
+    send: (message: string, key: unknown, repo: RepoDocument | RepoUpdate) => Promise<unknown>
+  ): Promise<void> {
     if (ctx) {
       ctx.session.releasesDescriptions = [];
     }
 
-    return repos.reduce((promise, repo) => {
+    await repos.reduce<Promise<unknown>>((promise, repo) => {
       const sendRelease = this.getReleaseSender(ctx, repo, send);
-
-      return repo.releases.reduce((stream, release) =>
-          stream.then(() => sendRelease(stream, release)),
-        promise);
+      return repo.releases.reduce<Promise<unknown>>(
+        (stream, release) => stream.then(() => sendRelease(stream, release)),
+        promise
+      );
     }, Promise.resolve());
   }
 
-  async actionsList(ctx) {
+  private async actionsList(ctx: Ctx): Promise<unknown> {
     await ctx.answerCbQuery('');
-
     return this.editMessageText(ctx, 'Select an action', keyboards.actionsList());
   }
 
-  async adminActionsList(ctx) {
+  private async adminActionsList(ctx: Ctx): Promise<unknown> {
     await ctx.answerCbQuery('');
-
     return this.editMessageText(ctx, 'Select an action', keyboards.adminActionsList());
   }
 
-  sendMessage(ctx) {
+  private sendMessage(ctx: Ctx): Promise<unknown> {
     return this.checkAdminPrivileges(ctx, async () => {
       ctx.session.action = 'sendMessage';
-
       await ctx.answerCbQuery('');
-
       return this.editMessageText(ctx, 'Please send me a message that will be sent to all users', keyboards.backToAdminActions());
     });
   }
 
-  async getStats(ctx) {
+  private async getStats(ctx: Ctx): Promise<unknown> {
     return this.checkAdminPrivileges(ctx, async () => {
       const users = await this.db.getAllUsers();
       const repos = await this.db.getAllReposNames();
@@ -378,87 +359,77 @@ class Bot {
       const chatsMembersCounts = await Promise.all(
         groups
           .map(({ userId }) => this.bot.telegram.getChatMembersCount(userId))
-          .map(( promise ) => promise.catch(() => null))
+          .map((promise: Promise<number>) => promise.catch(() => null))
       );
 
-      const usersInGroups = chatsMembersCounts
-        .filter(Boolean)
+      const usersInGroups = (chatsMembersCounts as (number | null)[])
+        .filter((x): x is number => x !== null)
         .reduce((acc, count) => acc + count, 0);
 
       const chatsInfo = (await Promise.all(
         groups
           .map(({ userId }) => this.bot.telegram.getChat(userId))
-          .map((promise) => promise.catch(() => null))
+          .map((promise: Promise<unknown>) => promise.catch(() => null))
       ))
         .filter(Boolean)
-        .map((info, index) => Object.assign(info, { members: chatsMembersCounts[index] }));
+        .map((info, index) => ({ ...(info as object), members: (chatsMembersCounts as (number | null)[])[index] ?? null })) as Array<{ title: string; members: number | null }>;
 
       const usersCount = users.filter(({ type }) => !type || type === 'private').length;
       const reposCount = repos.length;
       const averageSubscriptionsPerUser = (users.reduce((acc, { subscriptions }) => acc + subscriptions.length, 0) / users.length).toFixed(2);
       const averageWatchPerRepo = (repos.reduce((acc, { watchedUsers = [] }) => acc + watchedUsers.length, 0) / repos.length).toFixed(2);
 
-      return ctx.reply(stats({
-        groupsCount,
-        usersCount,
-        reposCount,
-        averageSubscriptionsPerUser,
-        averageWatchPerRepo,
-        usersInGroups,
-        chatsInfo
-      }));
+      return ctx.reply(stats({ groupsCount, usersCount, reposCount, averageSubscriptionsPerUser, averageWatchPerRepo, usersInGroups, chatsInfo }));
     });
   }
 
-  getReleaseSender(ctx, repo, send) {
-    return (promise, release) => {
-      const { full, short } = getReleaseMessages(repo, release || {});
+  private getReleaseSender(
+    ctx: Ctx | null,
+    repo: RepoDocument | RepoUpdate,
+    send: (message: string, key: unknown, repo: RepoDocument | RepoUpdate) => Promise<unknown>
+  ) {
+    return async (promise: Promise<unknown>, release: { name: string; url?: string; isPrerelease?: boolean; description?: string }) => {
+      const { full, short } = getReleaseMessages(repo, release);
 
       if (ctx) {
         ctx.session.releasesDescriptions.push(full);
-
         const key = keyboards.expandButton(ctx.session.releasesDescriptions.length - 1);
-
-        return promise.then(() => send(short, key, repo));
+        await promise;
+          return await send(short, key, repo);
       } else {
-        return full.reduce((stream, message) =>
-            stream.then(() => send(message, '', repo)),
-          promise);
+        return full.reduce(
+          (stream: Promise<unknown>, message: string) => stream.then(() => send(message, '', repo)),
+          promise
+        );
       }
     };
   }
 
-  dataBrokenException(ctx) {
+  private dataBrokenException(ctx: Ctx): Promise<unknown> {
     try {
       return this.editMessageText(ctx, 'Data is broken');
-    } catch (error) {
+    } catch {
       return ctx.reply('Data is broken');
     }
   }
 
-  async checkAdminPrivileges(ctx, cb) {
+  private async checkAdminPrivileges(ctx: Ctx, cb: () => Promise<unknown>): Promise<unknown> {
     const user = getUser(ctx);
-
     if (user.username === config.adminUserName) {
       return cb();
-    } else {
-      return ctx.reply('You are not an administrator')
     }
+    return ctx.reply('You are not an administrator');
   }
 
-  async checkForExeption(ctx, result) {
-    return result === null ? this.dataBrokenException(ctx) : result;
+  private async checkForException(ctx: Ctx, result: unknown): Promise<unknown> {
+    return (await (result as Promise<unknown>)) === null ? this.dataBrokenException(ctx) : result;
   }
 
-  async editMessageText(ctx, ...message) {
+  private async editMessageText(ctx: Ctx, ...message: unknown[]): Promise<unknown> {
     try {
       return await ctx.editMessageText(...message);
-    } catch (err) {
+    } catch {
       return null;
     }
   }
 }
-
-export {
-  Bot
-};
