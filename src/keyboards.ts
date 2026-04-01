@@ -1,57 +1,38 @@
-import Telegraf from 'telegraf';
+import { InlineKeyboard } from 'grammy';
 
-const { Markup } = Telegraf as { Markup: {
-  inlineKeyboard: (buttons: unknown[]) => { extra: () => unknown };
-  callbackButton: (text: string, action: string) => unknown;
-  urlButton: (text: string, url: string) => unknown;
-} };
+export const actionsList = (): InlineKeyboard =>
+  new InlineKeyboard()
+    .text('Add repository', 'addRepo')
+    .text('Subscriptions', 'editRepos')
+    .text('Get releases', 'getReleases');
 
-export const actionsList = () => Markup.inlineKeyboard([
-  Markup.callbackButton('Add repository', 'addRepo'),
-  Markup.callbackButton('Subscriptions', 'editRepos'),
-  Markup.callbackButton('Get releases', 'getReleases')
-]).extra();
+export const adminActionsList = (): InlineKeyboard =>
+  new InlineKeyboard()
+    .text('Send message', 'sendMessage')
+    .text('Stats', 'getStats')
+    .text('Force check', 'forceCheck');
 
-export const adminActionsList = () => Markup.inlineKeyboard([
-  Markup.callbackButton('Send message', 'sendMessage'),
-  Markup.callbackButton('Stats', 'getStats'),
-  Markup.callbackButton('Force check', 'forceCheck'),
-]).extra();
+export const backToAdminActions = (): InlineKeyboard =>
+  new InlineKeyboard().text('Back', 'adminActionsList');
 
-export const backToAdminActions = () => Markup.inlineKeyboard([
-  Markup.callbackButton('Back', 'adminActionsList')
-]).extra();
+export const backToActions = (): InlineKeyboard =>
+  new InlineKeyboard().text('Back', 'actionsList');
 
-export const backToActions = () => Markup.inlineKeyboard([
-  Markup.callbackButton('Back', 'actionsList')
-]).extra();
+export const addOneMoreRepo = (): InlineKeyboard =>
+  new InlineKeyboard().text('Yes', 'addRepo').text('Nope', 'actionsList');
 
-export const addOneMoreRepo = () => Markup.inlineKeyboard([
-  Markup.callbackButton('Yes', 'addRepo'),
-  Markup.callbackButton('Nope', 'actionsList')
-]).extra();
+export const expandButton = (owner: string, repoName: string, releaseName: string): InlineKeyboard =>
+  new InlineKeyboard().text('Expand', `getReleases:expand:${owner}/${repoName}/${releaseName}`);
 
-export const expandButton = (data: number) => Markup.inlineKeyboard([
-  Markup.callbackButton('Expand', `getReleases:expand:${data}`)
-]).extra();
+export const allOrOneRepo = (): InlineKeyboard =>
+  new InlineKeyboard()
+    .text('All subscriptions', 'getReleases:all')
+    .text('One repository', 'getReleases:one').row()
+    .text('Back', 'actionsList');
 
-export const allOrOneRepo = () => Markup.inlineKeyboard([
-  [
-    Markup.callbackButton('All subscriptions', 'getReleases:all'),
-    Markup.callbackButton('One repository', 'getReleases:one')
-  ],
-  [Markup.callbackButton('Back', 'actionsList')]
-]).extra();
-
-export const table = (backActionName: string, actionName: string, items: string[]) =>
-  Markup.inlineKeyboard([
-    ...items.map((item, index) => [Markup.callbackButton(item, `${actionName}:${index}`)]),
-    [Markup.callbackButton('Back', backActionName)]
-  ]).extra();
-
-export const paginationTable = (backActionName: string, actionName: string, items: string[]) =>
-  Markup.inlineKeyboard([
-    ...items.map((item, index) => [Markup.callbackButton(item, `${actionName}:${index}`)]),
-    [Markup.callbackButton('prev', ''), Markup.callbackButton('next', '')],
-    [Markup.callbackButton('Back', backActionName)]
-  ]).extra();
+export const table = (backActionName: string, actionName: string, items: string[]): InlineKeyboard => {
+  const kb = new InlineKeyboard();
+  items.forEach((item, index) => kb.text(item, `${actionName}:${index}`).row());
+  kb.text('Back', backActionName);
+  return kb;
+};

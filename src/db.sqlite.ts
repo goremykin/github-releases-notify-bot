@@ -66,6 +66,10 @@ export class Db {
     this.path = path;
   }
 
+  getConnection(): DatabaseSync {
+    return this.db;
+  }
+
   async init(): Promise<void> {
     this.db = new DatabaseSync(this.path);
     this.db.exec('PRAGMA journal_mode=WAL');

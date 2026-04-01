@@ -60,4 +60,14 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_tags_repo ON tags(repo_id);
     `,
   },
+  {
+    version: 2,
+    description: 'Add sessions table',
+    sql: `
+      CREATE TABLE sessions (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `,
+  },
 ];
