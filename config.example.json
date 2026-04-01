@@ -7,8 +7,7 @@
     "path": "./data/app.db"
   },
   "telegram": {
-    "token": "",
-    "proxy": ""
+    "token": ""
   },
   "adminUserName": "",
   "app": {

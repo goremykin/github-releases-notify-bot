@@ -9,7 +9,6 @@ export interface SqliteConfig {
 
 export interface TelegramConfig {
   token: string;
-  proxy: string;
 }
 
 export interface AppConfig {

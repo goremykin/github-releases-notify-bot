@@ -2,7 +2,6 @@ import { Bot as GrammyBot, Context, session } from 'grammy';
 import type { SessionFlavor, StorageAdapter } from 'grammy';
 import type { ParseMode } from 'grammy/types';
 import { InlineKeyboard } from 'grammy';
-import { SocksProxyAgent } from 'socks-proxy-agent';
 
 import * as keyboards from './keyboards.ts';
 import { about, greeting, stats } from './texts.ts';
@@ -15,8 +14,6 @@ import type { TaskManager } from './task-manager.ts';
 import type { Release, RepoDocument, RepoUpdate } from './types.ts';
 
 const API_TOKEN: string = config.telegram.token;
-const PROXY_OPTIONS: string = config.telegram.proxy;
-
 const PREVIEW_RELEASES_COUNT = -10;
 const FIRST_UPDATE_RELEASES_COUNT = 5;
 const UPDATE_INTERVAL = Math.floor((config.app.updateInterval / 60) * 100) / 100;
@@ -38,9 +35,7 @@ export class Bot {
   private tasks: TaskManager;
 
   constructor(db: Db, storage: StorageAdapter<SessionData>, logger: Logger, tasks: TaskManager) {
-    this.bot = new GrammyBot<BotContext>(API_TOKEN,
-      PROXY_OPTIONS ? { client: { baseFetchConfig: { agent: new SocksProxyAgent(PROXY_OPTIONS) } } } : {}
-    );
+    this.bot = new GrammyBot<BotContext>(API_TOKEN);
     this.db = db;
     this.logger = logger;
     this.tasks = tasks;
