@@ -1,4 +1,5 @@
 import { MongoClient, type Collection, type Db as MongoDb } from 'mongodb';
+import { logger } from './logger.ts';
 import type { RepoDocument, UserDocument, Release, RepoIdentifier, RepoUpdate, RepoWithReleases, RepoWithTags, VersionUpdates } from './types.ts';
 
 type ReleasesFilter = (oldReleases: Release[], newReleases: Release[]) => Release[];
@@ -24,19 +25,18 @@ export class Db {
     try {
       const client = new MongoClient(this.url);
       await client.connect();
-      console.log('Connected successfully to Db');
+      logger.info('Connected successfully to Db');
 
       const db: MongoDb = client.db(this.name);
       await this.createCollections(db);
-      console.log('Collections created');
 
       this.users = db.collection<UserDocument>('users');
       this.repos = db.collection<RepoDocument>('repos');
 
       await this.createIndexes();
-      console.log('Indexes created');
+      logger.info('DB initialized');
     } catch (error) {
-      console.log('Something wrong with MongoDB =(', (error as Error).stack?.toString());
+      logger.error({ err: error }, 'MongoDB connection failed');
     }
   }
 
@@ -75,7 +75,7 @@ export class Db {
       } as UserDocument);
 
       const userTitle = user.type === 'private' ? `${user.first_name} ${user.last_name}` : user.title;
-      console.log(`user ${userTitle} created`);
+      logger.info({ userTitle }, 'User created');
     }
   }
 

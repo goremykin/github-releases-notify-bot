@@ -42,7 +42,7 @@ export class Bot {
     this.logger = logger;
 
     this.bot.use(session());
-    this.bot.catch((err: Error) => { this.logger.error(err); });
+    this.bot.catch((err: Error) => { this.logger.error({ err }, 'Bot error'); });
 
     this.bot.telegram.getMe().then((botInfo: { username: string }) => {
       this.bot.options.username = botInfo.username;
@@ -51,10 +51,10 @@ export class Bot {
     this.bot.telegram.setMyCommands([
       { command: '/actions', description: 'Actions' },
       { command: '/about', description: 'About' }
-    ]).catch((err: Error) => logger.error(err));
+    ]).catch((err: Error) => logger.error({ err }, 'setMyCommands failed'));
 
     this.listen();
-    this.logger.log('Bot listen');
+    this.logger.info('Bot listen');
   }
 
   private listen(): void {
@@ -91,8 +91,7 @@ export class Bot {
       try {
         return await action.apply(this, args as Parameters<ActionFn>);
       } catch (error) {
-        this.logger.error(`uncaughtException: ${(error as Error).message}`);
-        this.logger.error((error as Error).stack?.toString() ?? '');
+        this.logger.error({ err: error }, 'uncaughtException');
       }
     };
   }
@@ -106,8 +105,7 @@ export class Bot {
           try {
             await this.bot.telegram.sendMessage(userId, markdown, Extra.markdown());
           } catch (error) {
-            this.logger.error(`Cannot send releases to user: ${userId}`);
-            this.logger.error((error as Error).stack?.toString() ?? '');
+            this.logger.error({ err: error, userId }, 'Cannot send release to user');
           }
         }));
       }
@@ -171,7 +169,7 @@ export class Bot {
               try {
                 await this.bot.telegram.sendMessage(userId, ctx.match.input, Extra.markdown());
               } catch {
-                this.logger.error(`Cannot send message to user: ${userId} | ${username} | ${firstName} | ${lastName}`);
+                this.logger.error({ userId, username, firstName, lastName }, 'Cannot send message to user');
               }
             }));
 

@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "start": "node src/index.ts",
+    "dev": "node src/index.ts | npx pino-pretty",
     "check": "npx tsgo"
   },
   "keywords": [],
@@ -13,6 +13,7 @@
   "license": "MIT",
   "dependencies": {
     "mongodb": "^6.20.0",
+    "pino": "^10.3.1",
     "socks-proxy-agent": "^8.0.5",
     "telegraf": "^3.40.0"
   },
