@@ -11,7 +11,7 @@ import { config } from './config.ts';
 import type { Db } from './db.sqlite.ts';
 import type { Logger } from './logger.ts';
 import type { TaskManager } from './task-manager.ts';
-import type { Release, RepoDocument, RepoUpdate } from './types.ts';
+import type { Release, ReleaseData, RepoDocument, RepoUpdate } from './types.ts';
 
 const API_TOKEN: string = config.telegram.token;
 const PREVIEW_RELEASES_COUNT = -10;
@@ -62,7 +62,7 @@ export class Bot {
     this.bot.callbackQuery('adminActionsList', this.wrapAction(this.adminActionsList));
     this.bot.callbackQuery('addRepo',          this.wrapAction(this.addRepo));
     this.bot.callbackQuery('getReleases',      this.wrapAction(this.getReleases));
-    this.bot.callbackQuery(/^getReleases:expand:([^/]+)\/([^/]+)\/(.+)$/,  this.wrapAction(this.getReleasesExpandRelease));
+    this.bot.callbackQuery(/^getReleases:expand:(\d+)\/(\d+)$/,            this.wrapAction(this.getReleasesExpandRelease));
     this.bot.callbackQuery('getReleases:all',  this.wrapAction(this.getReleasesAll));
     this.bot.callbackQuery('getReleases:one',  this.wrapAction(this.getReleasesOne));
     this.bot.callbackQuery(/^getReleases:one:(\d+)$/,                      this.wrapAction(this.getReleasesOneRepo));
@@ -315,13 +315,16 @@ export class Bot {
   }
 
   private async getReleasesExpandRelease(ctx: BotContext): Promise<void> {
-    const [, owner, repoName, releaseName] = ctx.match ?? [];
-    if (!owner || !repoName || !releaseName) return;
+    const [, matchRepoId, matchReleaseId] = ctx.match ?? [];
+    if (!matchRepoId || !matchReleaseId) return;
     await ctx.answerCallbackQuery();
 
-    const repo = await this.db.getRepo(owner, repoName);
-    const release = repo?.releases.find(r => r.name === releaseName)
-      ?? repo?.tags.find(t => t.name === releaseName);
+    const repoId = parseInt(matchRepoId);
+    const releaseId = parseInt(matchReleaseId);
+
+    const repo = await this.db.getRepoById(repoId);
+    const release = repo?.releases.find(r => r.id === releaseId)
+      ?? repo?.tags.find(t => t.id === releaseId);
 
     if (!repo || !release) {
       await this.dataBrokenException(ctx);
@@ -458,12 +461,13 @@ export class Bot {
     ctx: BotContext | null,
     repo: RepoDocument | RepoUpdate,
     send: SendFn
-  ): (release: Release) => Promise<void> {
-    return async (release: Release) => {
+  ): (release: ReleaseData) => Promise<void> {
+    return async (release: ReleaseData) => {
       const { full, short } = getReleaseMessages(repo, release);
 
       if (ctx) {
-        const keyboard = keyboards.expandButton(repo.owner, repo.name, release.name);
+        const repoId = (repo as RepoDocument).id;
+        const keyboard = keyboards.expandButton(repoId, (release as Release).id);
         await send(short, keyboard, repo);
       } else {
         for (const message of full) {

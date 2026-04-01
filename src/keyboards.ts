@@ -20,8 +20,8 @@ export const backToActions = (): InlineKeyboard =>
 export const addOneMoreRepo = (): InlineKeyboard =>
   new InlineKeyboard().text('Yes', 'addRepo').text('Nope', 'actionsList');
 
-export const expandButton = (owner: string, repoName: string, releaseName: string): InlineKeyboard =>
-  new InlineKeyboard().text('Expand', `getReleases:expand:${owner}/${repoName}/${releaseName}`);
+export const expandButton = (repoId: number, releaseId: number): InlineKeyboard =>
+  new InlineKeyboard().text('Expand', `getReleases:expand:${repoId}/${releaseId}`);
 
 export const allOrOneRepo = (): InlineKeyboard =>
   new InlineKeyboard()
