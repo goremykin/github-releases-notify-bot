@@ -15,9 +15,9 @@ export interface TelegramConfig {
 
 export interface AppConfig {
   updateInterval: number;
-  logs: string;
   restartRate: number;
   includePrerelease: boolean;
+  prettyLogs: boolean;
 }
 
 export interface Config {
