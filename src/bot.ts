@@ -4,12 +4,8 @@ import { SocksProxyAgent } from 'socks-proxy-agent';
 import * as keyboards from './keyboards.ts';
 import { about, greeting, stats } from './texts.ts';
 import { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } from './utils.ts';
-import { resolve, dirname } from 'node:path';
 import { getVersions } from './github-client.ts';
 import { config } from './config.ts';
-import { mongoExport } from './scripts/mongo-export.ts';
-import { sqliteImport } from './scripts/sqlite-import.ts';
-import { verify } from './scripts/verify.ts';
 import type { Db } from './db.sqlite.ts';
 import type { Logger } from './logger.ts';
 import type { TaskManager } from './task-manager.ts';
@@ -85,10 +81,7 @@ export class Bot {
       [/^editRepos:delete:(.+)$/, this.editReposDelete],
       ['sendMessage', this.sendMessage],
       ['getStats', this.getStats],
-      ['forceCheck', this.forceCheck],
-      ['dbExport', this.dbExport],
-      ['dbImport', this.dbImport],
-      ['dbVerify', this.dbVerify]
+      ['forceCheck', this.forceCheck]
     ];
 
     commands.forEach(([command, fn]) => this.bot.command(command, this.wrapAction(fn)));
@@ -404,49 +397,6 @@ export class Bot {
       await this.editMessageText(ctx, 'Checking...', keyboards.backToAdminActions());
       await this.tasks.trigger('releases');
       return this.editMessageText(ctx, 'Done!', keyboards.backToAdminActions());
-    });
-  }
-
-  private get dataDir(): string {
-    return dirname(resolve(process.cwd(), config.sqlite.path));
-  }
-
-  private dbExport(ctx: Ctx): Promise<unknown> {
-    return this.checkAdminPrivileges(ctx, async () => {
-      await ctx.answerCbQuery('');
-      await this.editMessageText(ctx, 'Exporting from MongoDB...', keyboards.backToAdminActions());
-      const result = await mongoExport(this.dataDir);
-      return this.editMessageText(
-        ctx,
-        `✅ Export complete\nUsers: ${result.users}\nRepos: ${result.repos}\nSaved to: ${result.path}`,
-        keyboards.backToAdminActions()
-      );
-    });
-  }
-
-  private dbImport(ctx: Ctx): Promise<unknown> {
-    return this.checkAdminPrivileges(ctx, async () => {
-      await ctx.answerCbQuery('');
-      await this.editMessageText(ctx, 'Importing into SQLite...', keyboards.backToAdminActions());
-      const dbPath = resolve(this.dataDir, 'app.db');
-      const dumpPath = resolve(this.dataDir, 'export.json');
-      const result = sqliteImport(dbPath, dumpPath);
-      return this.editMessageText(
-        ctx,
-        `✅ Import complete\nUsers: ${result.users}\nRepos: ${result.repos}\nSubscriptions: ${result.subscriptions}\nReleases: ${result.releases}\nTags: ${result.tags}`,
-        keyboards.backToAdminActions()
-      );
-    });
-  }
-
-  private dbVerify(ctx: Ctx): Promise<unknown> {
-    return this.checkAdminPrivileges(ctx, async () => {
-      await ctx.answerCbQuery('');
-      await this.editMessageText(ctx, 'Verifying...', keyboards.backToAdminActions());
-      const dbPath = resolve(this.dataDir, 'app.db');
-      const dumpPath = resolve(this.dataDir, 'export.json');
-      const report = verify(dbPath, dumpPath);
-      return this.editMessageText(ctx, report.summary, keyboards.backToAdminActions());
     });
   }
 

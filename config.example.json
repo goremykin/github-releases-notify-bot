@@ -3,10 +3,6 @@
     "token": "",
     "url": "https://api.github.com/graphql"
   },
-  "mongodb": {
-    "name": "test",
-    "url": "mongodb://mongo:27017/"
-  },
   "sqlite": {
     "path": "./data/app.db"
   },

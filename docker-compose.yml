@@ -1,14 +1,7 @@
 services:
-  mongo:
-    image: mongo:8.0
-    restart: always
-    volumes:
-      - ${PWD}/mongo:/data/db
   notify-bot:
     restart: always
     build: .
     volumes:
       - ${PWD}/config.json:/app/config.json
       - ${PWD}/data:/app/data
-    depends_on:
-      - mongo
