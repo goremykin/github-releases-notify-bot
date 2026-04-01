@@ -48,6 +48,12 @@ const getClient = (params: ClientParams): GraphQLClient => {
       });
 
       const response = await fetch(req);
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`GitHub API returned HTTP ${response.status}: ${text.slice(0, 200)}`);
+      }
+
       const body = await response.json() as { data: Record<string, unknown>; errors?: unknown[] };
 
       if (body.errors && body.errors.length) {
