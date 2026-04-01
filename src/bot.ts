@@ -145,20 +145,29 @@ export class Bot {
 
         const hasRepoInDB = await this.db.getRepo(repo.owner, repo.name);
         if (!hasRepoInDB) {
-          await ctx.reply('Fetching repository info...');
+          const fetchingMsg = await ctx.reply('Fetching repository info...');
           try {
             const releases = await getVersions(repo.owner, repo.name, FIRST_UPDATE_RELEASES_COUNT);
             await this.db.addRepo(repo.owner, repo.name);
             await this.db.updateRepo(repo.owner, repo.name, releases);
           } catch {
-            await ctx.reply('Could not fetch repository from GitHub. Check the name and try again:');
+            await ctx.api.editMessageText(
+              fetchingMsg.chat.id, fetchingMsg.message_id,
+              'Could not fetch repository from GitHub. Check the name and try again:'
+            );
             return;
           }
+          await this.db.bindUserToRepo(user.id, repo.owner, repo.name);
+          ctx.session.action = null;
+          await ctx.api.editMessageText(
+            fetchingMsg.chat.id, fetchingMsg.message_id,
+            'Done! Add one more?', { reply_markup: keyboards.addOneMoreRepo() }
+          );
+        } else {
+          await this.db.bindUserToRepo(user.id, repo.owner, repo.name);
+          ctx.session.action = null;
+          await ctx.reply('Done! Add one more?', { reply_markup: keyboards.addOneMoreRepo() });
         }
-
-        await this.db.bindUserToRepo(user.id, repo.owner, repo.name);
-        ctx.session.action = null;
-        await ctx.reply('Done! Add one more?', { reply_markup: keyboards.addOneMoreRepo() });
         break;
       }
 
