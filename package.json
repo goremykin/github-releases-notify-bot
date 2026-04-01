@@ -9,7 +9,7 @@
     "check": "npx tsgo"
   },
   "keywords": [],
-  "author": "Nikolay Ryabov",
+  "author": "Stepan Goremykin",
   "license": "MIT",
   "dependencies": {
     "mongodb": "^6.20.0",
