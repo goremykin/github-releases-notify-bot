@@ -8,6 +8,10 @@ export interface MongoConfig {
   url: string;
 }
 
+export interface SqliteConfig {
+  path: string;
+}
+
 export interface TelegramConfig {
   token: string;
   proxy: string;
@@ -23,6 +27,7 @@ export interface AppConfig {
 export interface Config {
   github: GithubConfig;
   mongodb: MongoConfig;
+  sqlite: SqliteConfig;
   telegram: TelegramConfig;
   adminUserName: string;
   app: AppConfig;
