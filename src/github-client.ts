@@ -168,18 +168,21 @@ const getManyVersions = async (repos: RepoIdentifier[], count: number): Promise<
   return { releases: releasesUpdates, tags: tagsUpdates };
 };
 
-const BUNCH_SIZE = 50;
+const BUNCH_SIZE = 25;
 
 export const getManyVersionsInBunches = async (repos: RepoIdentifier[], count: number): Promise<VersionUpdates> => {
   const bunchesCount = Math.ceil(repos.length / BUNCH_SIZE);
+  const bunches = Array(bunchesCount)
+    .fill(null)
+    .map((_, index) => repos.slice(index * BUNCH_SIZE, index * BUNCH_SIZE + BUNCH_SIZE));
+  const resultBunches: VersionUpdates[] = [];
 
-  const resultedBunches = await Promise.all(
-    Array(bunchesCount)
-      .fill(null)
-      .map((_, index) => getManyVersions(repos.slice(index * BUNCH_SIZE, index * BUNCH_SIZE + BUNCH_SIZE), count))
-  );
+  for (const bunch of bunches) {
+    const resultBunch = await getManyVersions(bunch, count);
+    resultBunches.push(resultBunch);
+  }
 
-  return resultedBunches.reduce<VersionUpdates>(
+  return resultBunches.reduce<VersionUpdates>(
     (acc, { tags, releases }) => ({
       releases: acc.releases.concat(releases),
       tags: acc.tags.concat(tags)
