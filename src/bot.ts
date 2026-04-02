@@ -1,59 +1,51 @@
-import Telegraf from 'telegraf';
-import { SocksProxyAgent } from 'socks-proxy-agent';
+import { Bot as GrammyBot, Context, session } from 'grammy';
+import type { SessionFlavor, StorageAdapter } from 'grammy';
+import type { ParseMode } from 'grammy/types';
+import { InlineKeyboard } from 'grammy';
 
 import * as keyboards from './keyboards.ts';
 import { about, greeting, stats } from './texts.ts';
 import { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } from './utils.ts';
-import { getVersions } from './github-client.ts';
+import { getVersions, getManyVersionsInBunches } from './github-client.ts';
 import { config } from './config.ts';
 import type { Db } from './db.sqlite.ts';
 import type { Logger } from './logger.ts';
 import type { TaskManager } from './task-manager.ts';
-import type { RepoDocument, RepoUpdate } from './types.ts';
-
-const { Extra, Markup, session } = Telegraf as {
-  Extra: { markdown: () => unknown };
-  Markup: { urlButton: (t: string, u: string) => unknown; callbackButton: (t: string, a: string) => unknown; inlineKeyboard: (b: unknown[]) => { extra: () => unknown } };
-  session: () => unknown;
-};
+import type { Release, ReleaseData, RepoDocument, RepoUpdate } from './types.ts';
 
 const API_TOKEN: string = config.telegram.token;
-const PROXY_OPTIONS: string = config.telegram.proxy;
-
 const PREVIEW_RELEASES_COUNT = -10;
 const FIRST_UPDATE_RELEASES_COUNT = 5;
 const UPDATE_INTERVAL = Math.floor((config.app.updateInterval / 60) * 100) / 100;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Ctx = any;
-type ActionFn = (ctx: Ctx, next: (() => void) | undefined) => Promise<unknown>;
+export interface SessionData {
+  action: 'addRepo' | 'sendMessage' | null;
+}
+
+type BotContext = Context & SessionFlavor<SessionData>;
+type Handler = (ctx: BotContext) => Promise<void>;
+type SendFn = (message: string, keyboard: InlineKeyboard | null, repo: RepoDocument | RepoUpdate) => Promise<void>;
+
+const initialSession = (): SessionData => ({ action: null });
 
 export class Bot {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private bot: any;
+  private bot: GrammyBot<BotContext>;
   private db: Db;
   private logger: Logger;
   private tasks: TaskManager;
 
-  constructor(db: Db, logger: Logger, tasks: TaskManager) {
-    this.bot = new (Telegraf as { new(token: string, opts: unknown): unknown })(API_TOKEN, {
-      telegram: PROXY_OPTIONS ? { agent: new SocksProxyAgent(PROXY_OPTIONS) } : {},
-      channelMode: false
-    });
+  constructor(db: Db, storage: StorageAdapter<SessionData>, logger: Logger, tasks: TaskManager) {
+    this.bot = new GrammyBot<BotContext>(API_TOKEN);
     this.db = db;
     this.logger = logger;
     this.tasks = tasks;
 
-    this.bot.use(session());
-    this.bot.catch((err: Error) => { this.logger.error({ err }, 'Bot error'); });
+    this.bot.use(session({ initial: initialSession, storage }));
+    this.bot.catch((err) => { this.logger.error({ err: err.error }, 'Bot error'); });
 
-    this.bot.telegram.getMe().then((botInfo: { username: string }) => {
-      this.bot.options.username = botInfo.username;
-    });
-
-    this.bot.telegram.setMyCommands([
+    this.bot.api.setMyCommands([
       { command: '/actions', description: 'Actions' },
-      { command: '/about', description: 'About' }
+      { command: '/about', description: 'About' },
     ]).catch((err: Error) => logger.error({ err }, 'setMyCommands failed'));
 
     this.listen();
@@ -61,392 +53,480 @@ export class Bot {
   }
 
   private listen(): void {
-    const commands: [string, ActionFn][] = [
-      ['start', this.start],
-      ['actions', this.actions],
-      ['about', this.about],
-      ['admin', this.admin]
-    ];
-    const actions: [string | RegExp, ActionFn][] = [
-      ['actionsList', this.actionsList],
-      ['adminActionsList', this.adminActionsList],
-      ['addRepo', this.addRepo],
-      ['getReleases', this.getReleases],
-      [/^getReleases:expand:(.+)$/, this.getReleasesExpandRelease],
-      ['getReleases:all', this.getReleasesAll],
-      ['getReleases:one', this.getReleasesOne],
-      [/^getReleases:one:(\d+)$/, this.getReleasesOneRepo],
-      [/^getReleases:one:(\d+?):release:(\d+?)$/, this.getReleasesOneRepoRelease],
-      ['editRepos', this.editRepos],
-      [/^editRepos:delete:(.+)$/, this.editReposDelete],
-      ['sendMessage', this.sendMessage],
-      ['getStats', this.getStats],
-      ['forceCheck', this.forceCheck]
-    ];
+    this.bot.command('start',   this.wrapAction(this.start));
+    this.bot.command('actions', this.wrapAction(this.actions));
+    this.bot.command('about',   this.wrapAction(this.about));
+    this.bot.command('admin',   this.wrapAction(this.admin));
 
-    commands.forEach(([command, fn]) => this.bot.command(command, this.wrapAction(fn)));
-    actions.forEach(([action, fn]) => this.bot.action(action, this.wrapAction(fn)));
-    this.bot.hears(/.+/, this.wrapAction(this.handleAnswer));
-    this.bot.startPolling();
+    this.bot.callbackQuery('actionsList',      this.wrapAction(this.actionsList));
+    this.bot.callbackQuery('adminActionsList', this.wrapAction(this.adminActionsList));
+    this.bot.callbackQuery('addRepo',          this.wrapAction(this.addRepo));
+    this.bot.callbackQuery('getReleases',      this.wrapAction(this.getReleases));
+    this.bot.callbackQuery(/^getReleases:expand:(\d+)\/(\d+)$/,            this.wrapAction(this.getReleasesExpandRelease));
+    this.bot.callbackQuery('getReleases:all',  this.wrapAction(this.getReleasesAll));
+    this.bot.callbackQuery('getReleases:one',  this.wrapAction(this.getReleasesOne));
+    this.bot.callbackQuery(/^getReleases:one:(\d+)$/,                      this.wrapAction(this.getReleasesOneRepo));
+    this.bot.callbackQuery(/^getReleases:one:(\d+?):release:(\d+?)$/,      this.wrapAction(this.getReleasesOneRepoRelease));
+    this.bot.callbackQuery('editRepos',        this.wrapAction(this.editRepos));
+    this.bot.callbackQuery(/^editRepos:delete:(.+)$/,                      this.wrapAction(this.editReposDelete));
+    this.bot.callbackQuery('sendMessage',      this.wrapAction(this.sendMessage));
+    this.bot.callbackQuery('getStats',         this.wrapAction(this.getStats));
+    this.bot.callbackQuery('getRepoStats',     this.wrapAction(this.getRepoStats));
+    this.bot.callbackQuery('forceCheck',       this.wrapAction(this.forceCheck));
+    this.bot.callbackQuery('refreshData',      this.wrapAction(this.refreshData));
+
+    this.bot.on('message:text', this.wrapAction(this.handleAnswer));
+    this.bot.start().catch((err: Error) => this.logger.error({ err }, 'Bot polling error'));
   }
 
-  private wrapAction(action: ActionFn): (...args: unknown[]) => Promise<unknown> {
-    return async (...args: unknown[]) => {
+  private wrapAction(action: Handler): Handler {
+    return async (ctx: BotContext) => {
       try {
-        return await action.apply(this, args as Parameters<ActionFn>);
+        await action.call(this, ctx);
       } catch (error) {
         this.logger.error({ err: error }, 'uncaughtException');
       }
     };
   }
 
-  stop(): void {
-    this.bot.stop();
+  async stop(): Promise<void> {
+    await this.bot.stop();
   }
 
   async notifyUsers(repos: RepoUpdate[]): Promise<void> {
-    await this.sendReleases(
-      null,
-      repos,
-      async (markdown: string, _key: unknown, { watchedUsers }: { watchedUsers: number[] }) => {
-        await Promise.all(watchedUsers.map(async (userId) => {
-          try {
-            await this.bot.telegram.sendMessage(userId, markdown, Extra.markdown());
-          } catch (error) {
-            this.logger.error({ err: error, userId }, 'Cannot send release to user');
-          }
-        }));
-      }
-    );
+    const send: SendFn = async (message, _keyboard, repo) => {
+      const watchedUsers = (repo as RepoUpdate).watchedUsers;
+      await Promise.all(watchedUsers.map(async (userId) => {
+        try {
+          await this.bot.api.sendMessage(userId, message, { parse_mode: 'Markdown' });
+        } catch (error) {
+          this.logger.error({ err: error, userId }, 'Cannot send release to user');
+        }
+      }));
+    };
+    await this.sendReleases(null, repos, send);
   }
 
-  private async start(ctx: Ctx): Promise<void> {
+  private async start(ctx: BotContext): Promise<void> {
     await ctx.reply(greeting());
-    return this.actions(ctx);
+    await this.actions(ctx);
   }
 
-  private async actions(ctx: Ctx): Promise<void> {
+  private async actions(ctx: BotContext): Promise<void> {
     ctx.session.action = null;
     const user = getUser(ctx);
     await this.db.createUser(user);
-    return ctx.reply('Select an action', keyboards.actionsList());
+    await ctx.reply('Select an action', { reply_markup: keyboards.actionsList() });
   }
 
-  private admin(ctx: Ctx): Promise<unknown> {
-    return this.checkAdminPrivileges(ctx, () => ctx.reply('Select an action', keyboards.adminActionsList()));
+  private async admin(ctx: BotContext): Promise<void> {
+    await this.checkAdminPrivileges(ctx, async () => {
+      await ctx.reply('Select an action', { reply_markup: keyboards.adminActionsList() });
+    });
   }
 
-  private about(ctx: Ctx): Promise<unknown> {
-    return ctx.replyWithMarkdown(about(UPDATE_INTERVAL));
+  private async about(ctx: BotContext): Promise<void> {
+    await ctx.reply(about(UPDATE_INTERVAL), { parse_mode: 'Markdown' });
   }
 
-  private async handleAnswer(ctx: Ctx, next: (() => void) | undefined): Promise<unknown> {
-    const str: string = ctx.match[0];
+  private async handleAnswer(ctx: BotContext): Promise<void> {
+    if (!ctx.message?.text) return;
+    const text = ctx.message.text;
     const user = getUser(ctx);
 
-    if (ctx.session.action) {
-      switch (ctx.session.action) {
-        case 'addRepo': {
-          const repo = parseRepo(str);
+    if (!ctx.session.action) return;
 
-          if (repo) {
-            const hasRepoInDB = await this.db.getRepo(repo.owner, repo.name);
-
-            if (!hasRepoInDB) {
-              try {
-                const releases = await getVersions(repo.owner, repo.name, FIRST_UPDATE_RELEASES_COUNT);
-                await this.db.addRepo(repo.owner, repo.name);
-                await this.db.updateRepo(repo.owner, repo.name, releases);
-              } catch {
-                return ctx.reply('Cannot subscribe to this repo. Please enter another:');
-              }
-            }
-
-            await this.db.bindUserToRepo(user.id, repo.owner, repo.name);
-            ctx.session.action = null;
-            return ctx.reply('Done! Add one more?', keyboards.addOneMoreRepo());
-          } else {
-            return ctx.reply('Cannot subscribe to this repo. Please enter another:');
-          }
+    switch (ctx.session.action) {
+      case 'addRepo': {
+        const repo = parseRepo(text);
+        if (!repo) {
+          await ctx.reply('Invalid format. Please use owner/name or a GitHub URL:');
+          return;
         }
-        case 'sendMessage':
-          return this.checkAdminPrivileges(ctx, async () => {
-            const users = await this.db.getAllUsers();
 
-            await Promise.all(users.map(async ({ userId, username, firstName, lastName }) => {
-              try {
-                await this.bot.telegram.sendMessage(userId, ctx.match.input, Extra.markdown());
-              } catch {
-                this.logger.error({ userId, username, firstName, lastName }, 'Cannot send message to user');
-              }
-            }));
-
-            ctx.session.action = null;
-            return ctx.reply('Message sent');
-          });
-        default:
+        const hasRepoInDB = await this.db.getRepo(repo.owner, repo.name);
+        if (!hasRepoInDB) {
+          const fetchingMsg = await ctx.reply('Fetching repository info...');
+          try {
+            const releases = await getVersions(repo.owner, repo.name, FIRST_UPDATE_RELEASES_COUNT);
+            await this.db.addRepo(repo.owner, repo.name);
+            await this.db.updateRepo(repo.owner, repo.name, releases);
+          } catch {
+            await ctx.api.editMessageText(
+              fetchingMsg.chat.id, fetchingMsg.message_id,
+              'Could not fetch repository from GitHub. Check the name and try again:'
+            );
+            return;
+          }
+          await this.db.bindUserToRepo(user.id, repo.owner, repo.name);
           ctx.session.action = null;
-          return next?.();
+          await ctx.api.editMessageText(
+            fetchingMsg.chat.id, fetchingMsg.message_id,
+            'Done! Add one more?', { reply_markup: keyboards.addOneMoreRepo() }
+          );
+        } else {
+          await this.db.bindUserToRepo(user.id, repo.owner, repo.name);
+          ctx.session.action = null;
+          await ctx.reply('Done! Add one more?', { reply_markup: keyboards.addOneMoreRepo() });
+        }
+        break;
       }
+
+      case 'sendMessage':
+        await this.checkAdminPrivileges(ctx, async () => {
+          const users = await this.db.getAllUsers();
+          await Promise.all(users.map(async ({ userId, username, firstName, lastName }) => {
+            try {
+              await this.bot.api.sendMessage(userId, text, { parse_mode: 'Markdown' });
+            } catch {
+              this.logger.error({ userId, username, firstName, lastName }, 'Cannot send message to user');
+            }
+          }));
+          ctx.session.action = null;
+          await ctx.reply('Message sent');
+        });
+        break;
+
+      default:
+        ctx.session.action = null;
     }
   }
 
-  private async addRepo(ctx: Ctx): Promise<unknown> {
+  private async addRepo(ctx: BotContext): Promise<void> {
     ctx.session.action = 'addRepo';
-    await ctx.answerCbQuery('');
-    return this.editMessageText(ctx, 'Please, send me the owner and name of repo (owner/name) or full url', keyboards.backToActions());
-  }
-
-  private async editRepos(ctx: Ctx): Promise<unknown> {
-    const user = await this.db.getUser(getUser(ctx).id);
-    const subscriptions = user?.subscriptions ?? [];
-
-    await ctx.answerCbQuery('');
-
-    if (subscriptions.length) {
-      const row = (repo: { owner: string; name: string }) => [
-        Markup.urlButton(`${repo.owner}/${repo.name}`, `https://github.com/${repo.owner}/${repo.name}`),
-        Markup.callbackButton('🗑️', `editRepos:delete:${repo.owner}/${repo.name}`)
-      ];
-
-      return this.editMessageText(ctx,
-        'Your subscriptions',
-        Markup.inlineKeyboard([...subscriptions.map(row), [Markup.callbackButton('Back', 'actionsList')]]).extra()
-      );
-    } else {
-      return this.editMessageText(ctx, 'You do not have a subscriptions', keyboards.backToActions());
-    }
-  }
-
-  private async editReposDelete(ctx: Ctx): Promise<unknown> {
-    const user = getUser(ctx);
-    const [owner, name] = (ctx.match[1] as string).split('/');
-    await this.db.unbindUserFromRepo(user.id, owner, name);
-    return this.editRepos(ctx);
-  }
-
-  private async getReleases(ctx: Ctx): Promise<unknown> {
-    await ctx.answerCbQuery('');
-    return this.editMessageText(ctx, 'What list do you want to see?', keyboards.allOrOneRepo());
-  }
-
-  private async getReleasesAll(ctx: Ctx): Promise<unknown> {
-    const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
-    await ctx.answerCbQuery('');
-    return this.sendReleases(ctx, repos.map(getLastReleasesInRepos), ctx.replyWithHTML);
-  }
-
-  private async getReleasesOne(ctx: Ctx): Promise<unknown> {
-    const user = await this.db.getUser(getUser(ctx).id);
-    const subscriptions = user?.subscriptions ?? [];
-
-    ctx.session.subscriptions = subscriptions;
-    await ctx.answerCbQuery('');
-
-    return this.editMessageText(ctx, 'Select repository',
-      keyboards.table(
-        'getReleases',
-        'getReleases:one',
-        subscriptions.map(({ owner, name }: { owner: string; name: string }) => `${owner}/${name}`)
-      )
+    await ctx.answerCallbackQuery();
+    await this.editMessageText(ctx,
+      'Please, send me the owner and name of repo (owner/name) or full url',
+      { reply_markup: keyboards.backToActions() }
     );
   }
 
-  private async getReleasesOneRepo(ctx: Ctx): Promise<unknown> {
-    await ctx.answerCbQuery('');
+  private async editRepos(ctx: BotContext): Promise<void> {
+    const user = await this.db.getUser(getUser(ctx).id);
+    const subscriptions = user?.subscriptions ?? [];
 
-    const index = parseInt(ctx.match[1]);
+    await ctx.answerCallbackQuery();
 
-    if (ctx.session.subscriptions?.[index]) {
-      const { owner, name } = ctx.session.subscriptions[index];
-      const repo = await this.db.getRepo(owner, name);
-      if (!repo) return;
-
-      const result = this.editMessageText(ctx, 'Select release',
-        keyboards.table(
-          'getReleases:one',
-          `getReleases:one:${index}:release`,
-          repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({ name, isPrerelease }: { name: string; isPrerelease: boolean }) =>
-            `${name}${isPrerelease ? ' (pre-release)' : ''}`)
-        )
+    if (subscriptions.length) {
+      const kb = new InlineKeyboard();
+      for (const repo of subscriptions) {
+        kb.url(`${repo.owner}/${repo.name}`, `https://github.com/${repo.owner}/${repo.name}`)
+          .text('🗑️', `editRepos:delete:${repo.owner}/${repo.name}`)
+          .row();
+      }
+      kb.text('Back', 'actionsList');
+      await this.editMessageText(ctx, 'Your subscriptions', { reply_markup: kb });
+    } else {
+      await this.editMessageText(ctx, 'You do not have a subscriptions',
+        { reply_markup: keyboards.backToActions() }
       );
-
-      return this.checkForException(ctx, result);
     }
   }
 
-  private async getReleasesOneRepoRelease(ctx: Ctx): Promise<unknown> {
-    await ctx.answerCbQuery('');
+  private async editReposDelete(ctx: BotContext): Promise<void> {
+    const user = getUser(ctx);
+    const match = ctx.match?.[1];
+    if (!match) return;
+    const [owner, name] = match.split('/');
+    await this.db.unbindUserFromRepo(user.id, owner, name);
+    await this.editRepos(ctx);
+  }
+
+  private async getReleases(ctx: BotContext): Promise<void> {
+    await ctx.answerCallbackQuery();
+    await this.editMessageText(ctx, 'What list do you want to see?',
+      { reply_markup: keyboards.allOrOneRepo() }
+    );
+  }
+
+  private async getReleasesAll(ctx: BotContext): Promise<void> {
+    const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
+    await ctx.answerCallbackQuery();
+    const send: SendFn = async (text, keyboard) => {
+      await ctx.reply(text, {
+        parse_mode: 'HTML',
+        ...(keyboard ? { reply_markup: keyboard } : {}),
+      });
+    };
+    await this.sendReleases(ctx, repos.map(getLastReleasesInRepos), send);
+  }
+
+  private async getReleasesOne(ctx: BotContext): Promise<void> {
+    const user = await this.db.getUser(getUser(ctx).id);
+    const subscriptions = user?.subscriptions ?? [];
+
+    await ctx.answerCallbackQuery();
+    await this.editMessageText(ctx, 'Select repository',
+      { reply_markup: keyboards.table(
+        'getReleases',
+        'getReleases:one',
+        subscriptions.map(({ owner, name }) => `${owner}/${name}`)
+      )}
+    );
+  }
+
+  private async getReleasesOneRepo(ctx: BotContext): Promise<void> {
+    const matchIndex = ctx.match?.[1];
+    if (!matchIndex) return;
+    await ctx.answerCallbackQuery();
+
+    const index = parseInt(matchIndex);
+    const user = await this.db.getUser(getUser(ctx).id);
+    const repoId = user?.subscriptions[index];
+    if (!repoId) return;
+
+    const repo = await this.db.getRepo(repoId.owner, repoId.name);
+    if (!repo) return;
+
+    const ok = await this.editMessageText(ctx, 'Select release',
+      { reply_markup: keyboards.table(
+        'getReleases:one',
+        `getReleases:one:${index}:release`,
+        repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({ name: relName, isPrerelease }) =>
+          `${relName}${isPrerelease ? ' (pre-release)' : ''}`)
+      )}
+    );
+    if (!ok) await this.dataBrokenException(ctx);
+  }
+
+  private async getReleasesOneRepoRelease(ctx: BotContext): Promise<void> {
+    await ctx.answerCallbackQuery();
 
     try {
-      const repoIndex = parseInt(ctx.match[1]);
-      const releaseIndex = parseInt(ctx.match[2]);
+      const [, matchRepo, matchRelease] = ctx.match ?? [];
+      if (!matchRepo || !matchRelease) return;
+      const repoIndex = parseInt(matchRepo);
+      const releaseIndex = parseInt(matchRelease);
 
-      if (ctx.session.subscriptions?.[repoIndex]) {
-        const { owner, name } = ctx.session.subscriptions[repoIndex];
-        const repo = await this.db.getRepo(owner, name);
-        if (!repo) return;
+      const user = await this.db.getUser(getUser(ctx).id);
+      const repoId = user?.subscriptions[repoIndex];
+      if (!repoId) return;
 
-        return this.sendReleases(
-          null,
-          [{ ...repo, releases: [repo.releases.slice(PREVIEW_RELEASES_COUNT)[releaseIndex]] }],
-          ctx.replyWithMarkdown
-        );
-      }
+      const repo = await this.db.getRepo(repoId.owner, repoId.name);
+      if (!repo) return;
+
+      const release = repo.releases.slice(PREVIEW_RELEASES_COUNT)[releaseIndex];
+      const send: SendFn = async (text) => {
+        await ctx.reply(text, { parse_mode: 'Markdown' });
+      };
+      await this.sendReleases(null, [{ ...repo, releases: [release] }], send);
     } catch {
-      return this.dataBrokenException(ctx);
+      await this.dataBrokenException(ctx);
     }
   }
 
-  private async getReleasesExpandRelease(ctx: Ctx): Promise<unknown> {
-    const data: string = ctx.match[1];
-    await ctx.answerCbQuery('');
+  private async getReleasesExpandRelease(ctx: BotContext): Promise<void> {
+    const [, matchRepoId, matchReleaseId] = ctx.match ?? [];
+    if (!matchRepoId || !matchReleaseId) return;
+    await ctx.answerCallbackQuery();
 
-    const index = parseInt(data);
-    const releases: string[][] | undefined = ctx.session.releasesDescriptions;
+    const repoId = parseInt(matchRepoId);
+    const releaseId = parseInt(matchReleaseId);
 
-    if (releases?.[index]) {
-      if (releases[index].length <= 1) {
-        const result = await this.editMessageText(ctx, releases[index][0], Extra.markdown());
-        return result === null ? this.dataBrokenException(ctx) : result;
-      } else {
-        return releases[index]
-          .reduce((promise: Promise<unknown>, message: string) =>
-            promise.then(() => ctx.replyWithMarkdown(message, Extra.markdown())),
-            ctx.deleteMessage(ctx.update.callback_query.id));
-      }
+    const repo = await this.db.getRepoById(repoId);
+    const release = repo?.releases.find(r => r.id === releaseId)
+      ?? repo?.tags.find(t => t.id === releaseId);
+
+    if (!repo || !release) {
+      await this.dataBrokenException(ctx);
+      return;
+    }
+
+    const { full } = getReleaseMessages(repo, release);
+
+    if (full.length === 1) {
+      const ok = await this.editMessageText(ctx, full[0], { parse_mode: 'Markdown' });
+      if (!ok) await this.dataBrokenException(ctx);
     } else {
-      return this.dataBrokenException(ctx);
+      await ctx.deleteMessage();
+      for (const message of full) {
+        await ctx.reply(message, { parse_mode: 'Markdown' });
+      }
     }
   }
 
   private async sendReleases(
-    ctx: Ctx | null,
+    ctx: BotContext | null,
     repos: Array<RepoDocument | RepoUpdate>,
-    send: (message: string, key: unknown, repo: RepoDocument | RepoUpdate) => Promise<unknown>
+    send: SendFn
   ): Promise<void> {
-    if (ctx) {
-      ctx.session.releasesDescriptions = [];
-    }
-
-    await repos.reduce<Promise<unknown>>((promise, repo) => {
+    for (const repo of repos) {
       const sendRelease = this.getReleaseSender(ctx, repo, send);
-      return repo.releases.reduce<Promise<unknown>>(
-        (stream, release) => stream.then(() => sendRelease(stream, release)),
-        promise
-      );
-    }, Promise.resolve());
+      for (const release of repo.releases) {
+        await sendRelease(release);
+      }
+    }
   }
 
-  private async actionsList(ctx: Ctx): Promise<unknown> {
-    await ctx.answerCbQuery('');
-    return this.editMessageText(ctx, 'Select an action', keyboards.actionsList());
+  private async actionsList(ctx: BotContext): Promise<void> {
+    await ctx.answerCallbackQuery();
+    await this.editMessageText(ctx, 'Select an action', { reply_markup: keyboards.actionsList() });
   }
 
-  private async adminActionsList(ctx: Ctx): Promise<unknown> {
-    await ctx.answerCbQuery('');
-    return this.editMessageText(ctx, 'Select an action', keyboards.adminActionsList());
+  private async adminActionsList(ctx: BotContext): Promise<void> {
+    await ctx.answerCallbackQuery();
+    await this.editMessageText(ctx, 'Select an action', { reply_markup: keyboards.adminActionsList() });
   }
 
-  private sendMessage(ctx: Ctx): Promise<unknown> {
-    return this.checkAdminPrivileges(ctx, async () => {
+  private async sendMessage(ctx: BotContext): Promise<void> {
+    await this.checkAdminPrivileges(ctx, async () => {
       ctx.session.action = 'sendMessage';
-      await ctx.answerCbQuery('');
-      return this.editMessageText(ctx, 'Please send me a message that will be sent to all users', keyboards.backToAdminActions());
+      await ctx.answerCallbackQuery();
+      await this.editMessageText(ctx,
+        'Please send me a message that will be sent to all users',
+        { reply_markup: keyboards.backToAdminActions() }
+      );
     });
   }
 
-  private async getStats(ctx: Ctx): Promise<unknown> {
-    return this.checkAdminPrivileges(ctx, async () => {
+  private async getStats(ctx: BotContext): Promise<void> {
+    await this.checkAdminPrivileges(ctx, async () => {
+      await ctx.answerCallbackQuery();
+
       const users = await this.db.getAllUsers();
       const repos = await this.db.getAllReposNames();
 
       const groups = users.filter(({ type }) => type && type !== 'private');
       const groupsCount = groups.length;
 
-      const chatsMembersCounts = await Promise.all(
-        groups
-          .map(({ userId }) => this.bot.telegram.getChatMembersCount(userId))
-          .map((promise: Promise<number>) => promise.catch(() => null))
+      const chatsMembersCounts: (number | null)[] = await Promise.all(
+        groups.map(({ userId }) =>
+          this.bot.api.getChatMemberCount(userId).catch(() => null)
+        )
       );
 
-      const usersInGroups = (chatsMembersCounts as (number | null)[])
+      const usersInGroups = chatsMembersCounts
         .filter((x): x is number => x !== null)
         .reduce((acc, count) => acc + count, 0);
 
       const chatsInfo = (await Promise.all(
-        groups
-          .map(({ userId }) => this.bot.telegram.getChat(userId))
-          .map((promise: Promise<unknown>) => promise.catch(() => null))
+        groups.map(({ userId }) =>
+          this.bot.api.getChat(userId).catch(() => null)
+        )
       ))
-        .filter(Boolean)
-        .map((info, index) => ({ ...(info as object), members: (chatsMembersCounts as (number | null)[])[index] ?? null })) as Array<{ title: string; members: number | null }>;
+        .filter((info): info is NonNullable<typeof info> => info !== null)
+        .map((info, index) => ({
+          title: 'title' in info ? (info.title ?? '') : '',
+          members: chatsMembersCounts[index] ?? null,
+        }));
 
       const usersCount = users.filter(({ type }) => !type || type === 'private').length;
       const reposCount = repos.length;
-      const averageSubscriptionsPerUser = (users.reduce((acc, { subscriptions }) => acc + subscriptions.length, 0) / users.length).toFixed(2);
-      const averageWatchPerRepo = (repos.reduce((acc, { watchedUsers = [] }) => acc + watchedUsers.length, 0) / repos.length).toFixed(2);
+      const averageSubscriptionsPerUser = (
+        users.reduce((acc, { subscriptions }) => acc + subscriptions.length, 0) / users.length
+      ).toFixed(2);
+      const averageWatchPerRepo = (
+        repos.reduce((acc, { watchedUsers = [] }) => acc + watchedUsers.length, 0) / repos.length
+      ).toFixed(2);
 
-      return ctx.reply(stats({ groupsCount, usersCount, reposCount, averageSubscriptionsPerUser, averageWatchPerRepo, usersInGroups, chatsInfo }));
+      await ctx.reply(stats({
+        groupsCount, usersCount, reposCount,
+        averageSubscriptionsPerUser, averageWatchPerRepo,
+        usersInGroups, chatsInfo,
+      }));
     });
   }
 
-  private forceCheck(ctx: Ctx): Promise<unknown> {
-    return this.checkAdminPrivileges(ctx, async () => {
-      await ctx.answerCbQuery('');
-      await this.editMessageText(ctx, 'Checking...', keyboards.backToAdminActions());
+  private async getRepoStats(ctx: BotContext): Promise<void> {
+    await this.checkAdminPrivileges(ctx, async () => {
+      await ctx.answerCallbackQuery();
+
+      const repos = await this.db.getAllReposNames();
+
+      if (!repos.length) {
+        await this.editMessageText(ctx, 'No repositories yet.', { reply_markup: keyboards.backToAdminActions() });
+        return;
+      }
+
+      const lines = repos
+        .sort((a, b) => b.watchedUsers.length - a.watchedUsers.length)
+        .map(({ owner, name, watchedUsers }) => `${owner}/${name} — ${watchedUsers.length}`);
+
+      await this.editMessageText(ctx,
+        `Repositories (${repos.length}):\n\n${lines.join('\n')}`,
+        { reply_markup: keyboards.backToAdminActions() }
+      );
+    });
+  }
+
+  private async refreshData(ctx: BotContext): Promise<void> {
+    await this.checkAdminPrivileges(ctx, async () => {
+      await ctx.answerCallbackQuery();
+      await this.editMessageText(ctx, 'Fetching from GitHub...', { reply_markup: keyboards.backToAdminActions() });
+
+      const repos = await this.db.getAllReposNames();
+      const data = await getManyVersionsInBunches(repos, 5);
+
+      await this.db.clearAllReleasesAndTags();
+
+      for (const repo of repos) {
+        const releases = data.releases.find(r => r.owner === repo.owner && r.name === repo.name);
+        const tags = data.tags.find(t => t.owner === repo.owner && t.name === repo.name);
+        await this.db.updateRepo(repo.owner, repo.name, {
+          releases: releases?.releases ?? [],
+          tags: tags?.tags ?? [],
+        });
+      }
+
+      await this.editMessageText(ctx, 'Done!', { reply_markup: keyboards.backToAdminActions() });
+    });
+  }
+
+  private async forceCheck(ctx: BotContext): Promise<void> {
+    await this.checkAdminPrivileges(ctx, async () => {
+      await ctx.answerCallbackQuery();
+      await this.editMessageText(ctx, 'Checking...', { reply_markup: keyboards.backToAdminActions() });
       await this.tasks.trigger('releases');
-      return this.editMessageText(ctx, 'Done!', keyboards.backToAdminActions());
+      await this.editMessageText(ctx, 'Done!', { reply_markup: keyboards.backToAdminActions() });
     });
   }
 
   private getReleaseSender(
-    ctx: Ctx | null,
+    ctx: BotContext | null,
     repo: RepoDocument | RepoUpdate,
-    send: (message: string, key: unknown, repo: RepoDocument | RepoUpdate) => Promise<unknown>
-  ) {
-    return async (promise: Promise<unknown>, release: { name: string; url?: string; isPrerelease?: boolean; description?: string }) => {
+    send: SendFn
+  ): (release: ReleaseData) => Promise<void> {
+    return async (release: ReleaseData) => {
       const { full, short } = getReleaseMessages(repo, release);
 
       if (ctx) {
-        ctx.session.releasesDescriptions.push(full);
-        const key = keyboards.expandButton(ctx.session.releasesDescriptions.length - 1);
-        await promise;
-          return await send(short, key, repo);
+        const repoId = (repo as RepoDocument).id;
+        const keyboard = keyboards.expandButton(repoId, (release as Release).id);
+        await send(short, keyboard, repo);
       } else {
-        return full.reduce(
-          (stream: Promise<unknown>, message: string) => stream.then(() => send(message, '', repo)),
-          promise
-        );
+        for (const message of full) {
+          await send(message, null, repo);
+        }
       }
     };
   }
 
-  private dataBrokenException(ctx: Ctx): Promise<unknown> {
-    try {
-      return this.editMessageText(ctx, 'Data is broken');
-    } catch {
-      return ctx.reply('Data is broken');
-    }
+  private async dataBrokenException(ctx: BotContext): Promise<void> {
+    const ok = await this.editMessageText(ctx,
+      'Session data expired. Please use /actions to start over.'
+    );
+    if (!ok) await ctx.reply('Session data expired. Please use /actions to start over.');
   }
 
-  private async checkAdminPrivileges(ctx: Ctx, cb: () => Promise<unknown>): Promise<unknown> {
+  private async checkAdminPrivileges(ctx: BotContext, cb: () => Promise<void>): Promise<void> {
     const user = getUser(ctx);
     if (user.username === config.adminUserName) {
-      return cb();
+      await cb();
+    } else {
+      await ctx.reply('You are not an administrator');
     }
-    return ctx.reply('You are not an administrator');
   }
 
-  private async checkForException(ctx: Ctx, result: unknown): Promise<unknown> {
-    return (await (result as Promise<unknown>)) === null ? this.dataBrokenException(ctx) : result;
-  }
-
-  private async editMessageText(ctx: Ctx, ...message: unknown[]): Promise<unknown> {
+  private async editMessageText(
+    ctx: BotContext,
+    text: string,
+    opts?: { reply_markup?: InlineKeyboard; parse_mode?: ParseMode }
+  ): Promise<boolean> {
     try {
-      return await ctx.editMessageText(...message);
+      await ctx.editMessageText(text, opts);
+      return true;
     } catch {
-      return null;
+      return false;
     }
   }
 }

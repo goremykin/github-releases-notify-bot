@@ -1,5 +1,5 @@
 import { config } from './config.ts';
-import type { Release, RepoIdentifier, RepoWithReleases, RepoWithTags, VersionUpdates } from './types.ts';
+import type { ReleaseData, RepoIdentifier, RepoWithReleases, RepoWithTags, VersionUpdates } from './types.ts';
 
 interface GraphQLClient {
   query: (query: string, variables?: unknown) => Promise<{ data: Record<string, unknown> }>;
@@ -70,14 +70,14 @@ const client = getClient({
   headers: { Authorization: 'Bearer ' + config.github.token }
 });
 
-const prepareRelease = ({ url, isPrerelease, description, tag }: RawRelease): Release => ({
+const prepareRelease = ({ url, isPrerelease, description, tag }: RawRelease): ReleaseData => ({
   url,
   description,
   isPrerelease,
   name: tag?.name ?? ''
 });
 
-const prepareReleases = (res: RawRepoData | null | undefined): Release[] =>
+const prepareReleases = (res: RawRepoData | null | undefined): ReleaseData[] =>
   res
     ? (res.releases?.nodes ?? [])
       .filter(Boolean)
@@ -85,19 +85,19 @@ const prepareReleases = (res: RawRepoData | null | undefined): Release[] =>
       .map(prepareRelease)
     : [];
 
-const prepareTag = (tag: RawTag): Release => ({
+const prepareTag = (tag: RawTag): ReleaseData => ({
   url: '',
   description: '',
   isPrerelease: false,
   name: tag.name
 });
 
-const prepareTags = (res: RawRepoData | null | undefined): Release[] =>
+const prepareTags = (res: RawRepoData | null | undefined): ReleaseData[] =>
   res ? (res.refs?.nodes ?? []).filter(Boolean).map(prepareTag) : [];
 
 const releasesQuery = (owner: string, name: string, count: number): string => `
 repository(owner:"${owner}", name:"${name}") {
-  releases(first: ${count}) {
+  releases(last: ${count}, orderBy: { field: CREATED_AT, direction: ASC }) {
     nodes {
       url,
       isPrerelease,
@@ -111,20 +111,20 @@ repository(owner:"${owner}", name:"${name}") {
 
 const tagsQuery = (owner: string, name: string, count: number): string => `
 repository(owner:"${owner}", name:"${name}") {
-  refs(last: ${count}, refPrefix: "refs/tags/") {
+  refs(last: ${count}, refPrefix: "refs/tags/", orderBy: { field: TAG_COMMIT_DATE, direction: ASC }) {
     nodes {
       name
     }
   }
 }`;
 
-const getReleases = (owner: string, name: string, count = 1): Promise<Release[]> =>
+const getReleases = (owner: string, name: string, count = 1): Promise<ReleaseData[]> =>
   client.query(releasesQuery(owner, name, count)).then(({ data }) => prepareReleases(data['repository'] as RawRepoData));
 
-const getTags = (owner: string, name: string, count = 1): Promise<Release[]> =>
+const getTags = (owner: string, name: string, count = 1): Promise<ReleaseData[]> =>
   client.query(tagsQuery(owner, name, count)).then(({ data }) => prepareTags(data['repository'] as RawRepoData));
 
-export const getVersions = async (owner: string, name: string, count: number): Promise<{ releases: Release[]; tags: Release[] }> => {
+export const getVersions = async (owner: string, name: string, count: number): Promise<{ releases: ReleaseData[]; tags: ReleaseData[] }> => {
   const [releases, tags] = await Promise.all([getReleases(owner, name, count), getTags(owner, name, count)]);
   return { releases, tags };
 };
@@ -143,8 +143,8 @@ const getMany = async (query: QueryBuilder, repos: RepoIdentifier[], count: numb
   return Promise.resolve([]);
 };
 
-const parseMany = <T extends { releases: Release[] } | { tags: Release[] }>(
-  parser: (raw: RawRepoData) => Release[],
+const parseMany = <T extends { releases: ReleaseData[] } | { tags: ReleaseData[] }>(
+  parser: (raw: RawRepoData) => ReleaseData[],
   toField: string
 ) => (data: Array<RepoIdentifier & { rawReleases: RawRepoData }> = []): T[] =>
   data.map(({ owner, name, rawReleases }) => ({

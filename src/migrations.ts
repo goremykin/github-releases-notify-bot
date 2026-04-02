@@ -60,4 +60,23 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_tags_repo ON tags(repo_id);
     `,
   },
+  {
+    version: 2,
+    description: 'Add sessions table',
+    sql: `
+      CREATE TABLE sessions (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `,
+  },
+  {
+    version: 3,
+    description: 'Drop redundant indexes',
+    sql: `
+      DROP INDEX IF EXISTS idx_subscriptions_user;
+      DROP INDEX IF EXISTS idx_releases_repo;
+      DROP INDEX IF EXISTS idx_tags_repo;
+    `,
+  },
 ];

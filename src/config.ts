@@ -33,7 +33,6 @@ export const config: Config = {
     ...parsed.github,
   } as Config['github'],
   telegram: {
-    proxy: '',
     ...parsed.telegram,
   } as Config['telegram'],
   sqlite: {

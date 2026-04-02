@@ -2,6 +2,8 @@ import cluster from 'cluster';
 import { logger } from './logger.ts';
 import { Db } from './db.sqlite.ts';
 import { Bot } from './bot.ts';
+import type { SessionData } from './bot.ts';
+import { SqliteSessionStorage } from './session-storage.ts';
 import { TaskManager } from './task-manager.ts';
 import { getManyVersionsInBunches } from './github-client.ts';
 import { config } from './config.ts';
@@ -28,7 +30,8 @@ const run = async (): Promise<void> => {
     logger.error({ err: error }, 'DB init failed');
   }
 
-  const bot = new Bot(db, logger, tasks);
+  const storage = new SqliteSessionStorage<SessionData>(db.getConnection());
+  const bot = new Bot(db, storage, logger, tasks);
 
   const updateReleases = async () => {
     try {
@@ -56,7 +59,7 @@ const run = async (): Promise<void> => {
   process.on('SIGTERM', () => {
     logger.info('Worker received SIGTERM, shutting down');
     tasks.stop('releases')
-      .then(() => { bot.stop(); })
+      .then(() => bot.stop())
       .then(() => { process.exit(0); })
       .catch((err: unknown) => {
         logger.error({ err }, 'Error during shutdown');
