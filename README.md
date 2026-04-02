@@ -12,3 +12,26 @@ Bot available in Telegram: [@ReleaseNotifier_Bot](https://telegram.me/ReleaseNot
 /actions - actions menu
 /about - info about bot
 ```
+
+## Running with Docker
+
+Copy `config.example.json` to `config.json` and fill in your tokens, then:
+
+```yaml
+services:
+  notify-bot:
+    image: ghcr.io/goremykin/github-releases-notify-bot:latest
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./data:/app/data
+    user: "1000:1000"
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+```
