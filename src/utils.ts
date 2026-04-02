@@ -1,16 +1,23 @@
+import type { Context } from 'grammy';
+import type { Chat } from 'grammy/types';
 import type { Release, RepoDocument, RepoIdentifier, TelegramUser } from './types.ts';
 
 const MAX_MESSAGE_LENGTH = 4096;
 
-interface TelegramContext {
-  message?: { chat: TelegramUser; from: TelegramUser };
-  update?: { callback_query: { message: { chat: TelegramUser }; from: TelegramUser } };
-}
+const chatToUser = (chat: Chat): TelegramUser => ({
+  id: chat.id,
+  type: chat.type,
+  username: 'username' in chat ? chat.username : undefined,
+  title: 'title' in chat ? chat.title : undefined,
+  first_name: 'first_name' in chat ? (chat as { first_name?: string }).first_name : undefined,
+  last_name: 'last_name' in chat ? (chat as { last_name?: string }).last_name : undefined,
+});
 
-export const getUser = (ctx: TelegramContext): TelegramUser =>
-  ctx.message
-    ? (ctx.message.chat || ctx.message.from)
-    : (ctx.update!.callback_query.message.chat || ctx.update!.callback_query.from);
+export const getUser = (ctx: Context): TelegramUser => {
+  const chat = ctx.chat ?? ctx.callbackQuery?.message?.chat;
+  if (!chat) throw new Error('Cannot determine chat from context');
+  return { ...chatToUser(chat), is_bot: ctx.from?.is_bot };
+};
 
 const getShortReleaseMessage = (
   repo: RepoIdentifier = { owner: '', name: '' },
@@ -85,10 +92,8 @@ export const parseRepo = (str: string): RepoIdentifier | null => {
 };
 
 export const getLastReleasesInRepos = (repo: RepoDocument): RepoDocument => {
-  const revertedReleases = repo.releases.slice().reverse();
-
-  const last = revertedReleases[0];
-  const lastRelease = revertedReleases.find((release) => !release.isPrerelease);
+  const last = repo.releases[0];
+  const lastRelease = repo.releases.find((release) => !release.isPrerelease);
   const releases = last ? [last] : [];
 
   if (last && last.isPrerelease && lastRelease) {

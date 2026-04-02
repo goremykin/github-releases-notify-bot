@@ -5,6 +5,7 @@ import type {
   RepoDocument,
   UserDocument,
   Release,
+  ReleaseData,
   RepoUpdate,
   RepoWithReleases,
   RepoWithTags,
@@ -12,14 +13,14 @@ import type {
   TelegramUser,
 } from './types.ts';
 
-type ReleasesFilter = (oldReleases: Release[], newReleases: Release[]) => Release[];
+type ReleasesFilter = (oldReleases: ReleaseData[], newReleases: ReleaseData[]) => ReleaseData[];
 type SQLValue = null | number | bigint | string | Uint8Array;
 
 interface ModifyResult {
   owner: string;
   name: string;
-  releases?: Release[];
-  tags?: Release[];
+  releases?: ReleaseData[];
+  tags?: ReleaseData[];
   watchedUsers: number[];
 }
 
@@ -42,6 +43,7 @@ interface RepoRow {
 }
 
 interface ReleaseRow {
+  id: number;
   name: string;
   description: string | null;
   is_prerelease: number;
@@ -51,6 +53,7 @@ interface ReleaseRow {
 
 function mapRelease(row: ReleaseRow): Release {
   return {
+    id: row.id,
     name: row.name,
     description: row.description ?? '',
     isPrerelease: Boolean(row.is_prerelease),
@@ -64,6 +67,10 @@ export class Db {
 
   constructor(path: string) {
     this.path = path;
+  }
+
+  getConnection(): DatabaseSync {
+    return this.db;
   }
 
   async init(): Promise<void> {
@@ -151,6 +158,11 @@ export class Db {
     return row ? this.buildRepoDocument(row) : null;
   }
 
+  async getRepoById(id: number): Promise<RepoDocument | null> {
+    const row = this.queryOne<RepoRow>('SELECT id, owner, name FROM repos WHERE id = ?', id);
+    return row ? this.buildRepoDocument(row) : null;
+  }
+
   async getAllRepos(): Promise<RepoDocument[]> {
     return this.query<RepoRow>('SELECT id, owner, name FROM repos').map(row => this.buildRepoDocument(row));
   }
@@ -168,10 +180,15 @@ export class Db {
   // no-op: capping is enforced at insert time via insertReleases()
   async clearReleases(): Promise<void> {}
 
+  async clearAllReleasesAndTags(): Promise<void> {
+    this.db.exec('DELETE FROM releases');
+    this.db.exec('DELETE FROM tags');
+  }
+
   async updateRepo(
     owner: string,
     name: string,
-    { releases: newReleases, tags: newTags }: { releases: Release[]; tags: Release[] }
+    { releases: newReleases, tags: newTags }: { releases: ReleaseData[]; tags: ReleaseData[] }
   ): Promise<void> {
     const repoRow = this.queryOne<RepoRow>(
       'SELECT id FROM repos WHERE owner = ? AND name = ?', owner, name
@@ -273,6 +290,13 @@ export class Db {
     );
     if (!repoRow) return;
     this.db.prepare('DELETE FROM subscriptions WHERE user_id = ? AND repo_id = ?').run(userId, repoRow.id);
+
+    const remaining = this.queryOne<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM subscriptions WHERE repo_id = ?', repoRow.id
+    );
+    if (remaining?.count === 0) {
+      this.db.prepare('DELETE FROM repos WHERE id = ?').run(repoRow.id);
+    }
   }
 
   private query<T>(sql: string, ...params: SQLValue[]): T[] {
@@ -283,7 +307,7 @@ export class Db {
     return this.db.prepare(sql).get(...params) as unknown as T | undefined;
   }
 
-  private insertReleases(repoId: number, items: Release[], table: 'releases' | 'tags'): void {
+  private insertReleases(repoId: number, items: ReleaseData[], table: 'releases' | 'tags'): void {
     const insert = this.db.prepare(`
       INSERT OR IGNORE INTO ${table} (repo_id, name, description, is_prerelease, url)
       VALUES (?, ?, ?, ?, ?)
@@ -301,13 +325,14 @@ export class Db {
 
   private buildRepoDocument(row: RepoRow): RepoDocument {
     return {
+      id: row.id,
       owner: row.owner,
       name: row.name,
       releases: this.query<ReleaseRow>(
-        'SELECT name, description, is_prerelease, url FROM releases WHERE repo_id = ? ORDER BY id ASC', row.id
+        'SELECT id, name, description, is_prerelease, url FROM releases WHERE repo_id = ? ORDER BY id DESC', row.id
       ).map(mapRelease),
       tags: this.query<ReleaseRow>(
-        'SELECT name, description, is_prerelease, url FROM tags WHERE repo_id = ? ORDER BY id ASC', row.id
+        'SELECT id, name, description, is_prerelease, url FROM tags WHERE repo_id = ? ORDER BY id DESC', row.id
       ).map(mapRelease),
       watchedUsers: this.query<{ user_id: number }>(
         'SELECT user_id FROM subscriptions WHERE repo_id = ?', row.id
@@ -367,13 +392,13 @@ export class Db {
     return results;
   }
 
-  private filterNewReleases(oldReleases: Release[] = [], newReleases: Release[] = []): Release[] {
+  private filterNewReleases(oldReleases: ReleaseData[] = [], newReleases: ReleaseData[] = []): ReleaseData[] {
     return newReleases.filter(newRelease =>
       newRelease && !oldReleases.some(oldRelease => oldRelease && oldRelease.name === newRelease.name)
     );
   }
 
-  private filterChangedReleases(oldReleases: Release[] = [], newReleases: Release[] = []): Release[] {
+  private filterChangedReleases(oldReleases: ReleaseData[] = [], newReleases: ReleaseData[] = []): ReleaseData[] {
     return newReleases.filter(newRelease =>
       newRelease && oldReleases.some(oldRelease =>
         oldRelease &&

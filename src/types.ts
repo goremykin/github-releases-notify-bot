@@ -9,7 +9,6 @@ export interface SqliteConfig {
 
 export interface TelegramConfig {
   token: string;
-  proxy: string;
 }
 
 export interface AppConfig {
@@ -27,11 +26,15 @@ export interface Config {
   app: AppConfig;
 }
 
-export interface Release {
+export interface ReleaseData {
   url: string;
   description: string;
   isPrerelease: boolean;
   name: string;
+}
+
+export interface Release extends ReleaseData {
+  id: number;
 }
 
 export interface RepoIdentifier {
@@ -40,6 +43,7 @@ export interface RepoIdentifier {
 }
 
 export interface RepoDocument extends RepoIdentifier {
+  id: number;
   watchedUsers: number[];
   releases: Release[];
   tags: Release[];
@@ -68,12 +72,12 @@ export interface TelegramUser {
 }
 
 export interface RepoWithReleases extends RepoIdentifier {
-  releases: Release[];
+  releases: ReleaseData[];
   watchedUsers?: number[];
 }
 
 export interface RepoWithTags extends RepoIdentifier {
-  tags: Release[];
+  tags: ReleaseData[];
   watchedUsers?: number[];
 }
 
@@ -83,7 +87,7 @@ export interface VersionUpdates {
 }
 
 export interface RepoUpdate extends RepoIdentifier {
-  releases: Release[];
+  releases: ReleaseData[];
   watchedUsers: number[];
-  tags?: Release[];
+  tags?: ReleaseData[];
 }
