@@ -67,7 +67,7 @@ export const getReleaseMessages = (repo: RepoIdentifier, release: Partial<Releas
 });
 
 export const parseRepo = (str: string): RepoIdentifier | null => {
-  const githubRegexp = /https?:\/\/github\.com\/(.*?)\/(.*?)\/?$/i;
+  const githubRegexp = /(?:https?:\/\/)?github\.com\/([^/\s]+)\/([^/\s]+)/i;
   let owner: string | undefined, name: string | undefined;
 
   try {
