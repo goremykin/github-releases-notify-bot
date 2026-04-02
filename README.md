@@ -25,6 +25,9 @@ services:
       - ./config.json:/app/config.json:ro
       - ./data:/app/data
     user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: unless-stopped
     cap_drop:
       - ALL
