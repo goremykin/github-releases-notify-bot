@@ -92,10 +92,8 @@ export const parseRepo = (str: string): RepoIdentifier | null => {
 };
 
 export const getLastReleasesInRepos = (repo: RepoDocument): RepoDocument => {
-  const revertedReleases = repo.releases.slice().reverse();
-
-  const last = revertedReleases[0];
-  const lastRelease = revertedReleases.find((release) => !release.isPrerelease);
+  const last = repo.releases[0];
+  const lastRelease = repo.releases.find((release) => !release.isPrerelease);
   const releases = last ? [last] : [];
 
   if (last && last.isPrerelease && lastRelease) {
