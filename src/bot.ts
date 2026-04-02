@@ -296,31 +296,27 @@ export class Bot {
   private async getReleasesOneRepoRelease(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery();
 
-    try {
-      const [, matchRepoId, matchReleaseId] = ctx.match ?? [];
-      if (!matchRepoId || !matchReleaseId) return;
-      const repoId = parseInt(matchRepoId);
-      const releaseId = parseInt(matchReleaseId);
+    const [, matchRepoId, matchReleaseId] = ctx.match ?? [];
+    if (!matchRepoId || !matchReleaseId) return;
+    const repoId = parseInt(matchRepoId);
+    const releaseId = parseInt(matchReleaseId);
 
-      const repo = await this.db.getRepoById(repoId);
-      if (!repo) {
-        await this.dataBrokenException(ctx);
-        return;
-      }
-
-      const release = repo.releases.find(r => r.id === releaseId);
-      if (!release) {
-        await this.dataBrokenException(ctx);
-        return;
-      }
-
-      const send: SendFn = async (text) => {
-        await ctx.reply(text, { parse_mode: 'Markdown' });
-      };
-      await this.sendReleases(null, [{ ...repo, releases: [release] }], send);
-    } catch {
+    const repo = await this.db.getRepoById(repoId);
+    if (!repo) {
       await this.dataBrokenException(ctx);
+      return;
     }
+
+    const release = repo.releases.find(r => r.id === releaseId);
+    if (!release) {
+      await this.dataBrokenException(ctx);
+      return;
+    }
+
+    const send: SendFn = async (text) => {
+      await ctx.reply(text, { parse_mode: 'Markdown' });
+    };
+    await this.sendReleases(null, [{ ...repo, releases: [release] }], send);
   }
 
   private async getReleasesExpandRelease(ctx: BotContext): Promise<void> {
