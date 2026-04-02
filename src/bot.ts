@@ -58,22 +58,22 @@ export class Bot {
     this.bot.command('about',   this.wrapAction(this.about));
     this.bot.command('admin',   this.wrapAction(this.admin));
 
-    this.bot.callbackQuery('actionsList',      this.wrapAction(this.actionsList));
+    this.bot.callbackQuery('actionsList', this.wrapAction(this.actionsList));
     this.bot.callbackQuery('adminActionsList', this.wrapAction(this.adminActionsList));
-    this.bot.callbackQuery('addRepo',          this.wrapAction(this.addRepo));
-    this.bot.callbackQuery('getReleases',      this.wrapAction(this.getReleases));
-    this.bot.callbackQuery(/^getReleases:expand:(\d+)\/(\d+)$/,            this.wrapAction(this.getReleasesExpandRelease));
-    this.bot.callbackQuery('getReleases:all',  this.wrapAction(this.getReleasesAll));
-    this.bot.callbackQuery('getReleases:one',  this.wrapAction(this.getReleasesOne));
-    this.bot.callbackQuery(/^getReleases:one:(\d+)$/,                      this.wrapAction(this.getReleasesOneRepo));
-    this.bot.callbackQuery(/^getReleases:one:(\d+?):release:(\d+?)$/,      this.wrapAction(this.getReleasesOneRepoRelease));
-    this.bot.callbackQuery('editRepos',        this.wrapAction(this.editRepos));
-    this.bot.callbackQuery(/^editRepos:delete:(.+)$/,                      this.wrapAction(this.editReposDelete));
-    this.bot.callbackQuery('sendMessage',      this.wrapAction(this.sendMessage));
-    this.bot.callbackQuery('getStats',         this.wrapAction(this.getStats));
-    this.bot.callbackQuery('getRepoStats',     this.wrapAction(this.getRepoStats));
-    this.bot.callbackQuery('forceCheck',       this.wrapAction(this.forceCheck));
-    this.bot.callbackQuery('refreshData',      this.wrapAction(this.refreshData));
+    this.bot.callbackQuery('addRepo', this.wrapAction(this.addRepo));
+    this.bot.callbackQuery('getReleases', this.wrapAction(this.getReleases));
+    this.bot.callbackQuery(/^getReleases:expand:(\d+)\/(\d+)$/, this.wrapAction(this.getReleasesExpandRelease));
+    this.bot.callbackQuery('getReleases:all', this.wrapAction(this.getReleasesAll));
+    this.bot.callbackQuery('getReleases:one', this.wrapAction(this.getReleasesOne));
+    this.bot.callbackQuery(/^getReleases:one:(\d+)$/, this.wrapAction(this.getReleasesOneRepo));
+    this.bot.callbackQuery(/^getReleases:one:(\d+?):release:(\d+?)$/, this.wrapAction(this.getReleasesOneRepoRelease));
+    this.bot.callbackQuery('editRepos', this.wrapAction(this.editRepos));
+    this.bot.callbackQuery(/^editRepos:delete:(\d+)$/, this.wrapAction(this.editReposDelete));
+    this.bot.callbackQuery('sendMessage', this.wrapAction(this.sendMessage));
+    this.bot.callbackQuery('getStats', this.wrapAction(this.getStats));
+    this.bot.callbackQuery('getRepoStats', this.wrapAction(this.getRepoStats));
+    this.bot.callbackQuery('forceCheck', this.wrapAction(this.forceCheck));
+    this.bot.callbackQuery('refreshData', this.wrapAction(this.refreshData));
 
     this.bot.on('message:text', this.wrapAction(this.handleAnswer));
     this.bot.start().catch((err: Error) => this.logger.error({ err }, 'Bot polling error'));
@@ -202,16 +202,15 @@ export class Bot {
   }
 
   private async editRepos(ctx: BotContext): Promise<void> {
-    const user = await this.db.getUser(getUser(ctx).id);
-    const subscriptions = user?.subscriptions ?? [];
+    const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
 
     await ctx.answerCallbackQuery();
 
-    if (subscriptions.length) {
+    if (repos.length) {
       const kb = new InlineKeyboard();
-      for (const repo of subscriptions) {
+      for (const repo of repos) {
         kb.url(`${repo.owner}/${repo.name}`, `https://github.com/${repo.owner}/${repo.name}`)
-          .text('🗑️', `editRepos:delete:${repo.owner}/${repo.name}`)
+          .text('🗑️', `editRepos:delete:${repo.id}`)
           .row();
       }
       kb.text('Back', 'actionsList');
@@ -227,8 +226,13 @@ export class Bot {
     const user = getUser(ctx);
     const match = ctx.match?.[1];
     if (!match) return;
-    const [owner, name] = match.split('/');
-    await this.db.unbindUserFromRepo(user.id, owner, name);
+    const repoId = parseInt(match);
+    const repo = await this.db.getRepoById(repoId);
+    if (!repo) {
+      await this.dataBrokenException(ctx);
+      return;
+    }
+    await this.db.unbindUserFromRepo(user.id, repo.owner, repo.name);
     await this.editRepos(ctx);
   }
 
@@ -252,38 +256,38 @@ export class Bot {
   }
 
   private async getReleasesOne(ctx: BotContext): Promise<void> {
-    const user = await this.db.getUser(getUser(ctx).id);
-    const subscriptions = user?.subscriptions ?? [];
+    const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
 
     await ctx.answerCallbackQuery();
     await this.editMessageText(ctx, 'Select repository',
       { reply_markup: keyboards.table(
         'getReleases',
         'getReleases:one',
-        subscriptions.map(({ owner, name }) => `${owner}/${name}`)
+        repos.map(({ id, owner, name }) => ({ label: `${owner}/${name}`, id }))
       )}
     );
   }
 
   private async getReleasesOneRepo(ctx: BotContext): Promise<void> {
-    const matchIndex = ctx.match?.[1];
-    if (!matchIndex) return;
+    const matchId = ctx.match?.[1];
+    if (!matchId) return;
     await ctx.answerCallbackQuery();
 
-    const index = parseInt(matchIndex);
-    const user = await this.db.getUser(getUser(ctx).id);
-    const repoId = user?.subscriptions[index];
-    if (!repoId) return;
-
-    const repo = await this.db.getRepo(repoId.owner, repoId.name);
-    if (!repo) return;
+    const repoId = parseInt(matchId);
+    const repo = await this.db.getRepoById(repoId);
+    if (!repo) {
+      await this.dataBrokenException(ctx);
+      return;
+    }
 
     const ok = await this.editMessageText(ctx, 'Select release',
       { reply_markup: keyboards.table(
         'getReleases:one',
-        `getReleases:one:${index}:release`,
-        repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({ name: relName, isPrerelease }) =>
-          `${relName}${isPrerelease ? ' (pre-release)' : ''}`)
+        `getReleases:one:${repoId}:release`,
+        repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({ id, name: relName, isPrerelease }) => ({
+          label: `${relName}${isPrerelease ? ' (pre-release)' : ''}`,
+          id,
+        }))
       )}
     );
     if (!ok) await this.dataBrokenException(ctx);
@@ -293,19 +297,23 @@ export class Bot {
     await ctx.answerCallbackQuery();
 
     try {
-      const [, matchRepo, matchRelease] = ctx.match ?? [];
-      if (!matchRepo || !matchRelease) return;
-      const repoIndex = parseInt(matchRepo);
-      const releaseIndex = parseInt(matchRelease);
+      const [, matchRepoId, matchReleaseId] = ctx.match ?? [];
+      if (!matchRepoId || !matchReleaseId) return;
+      const repoId = parseInt(matchRepoId);
+      const releaseId = parseInt(matchReleaseId);
 
-      const user = await this.db.getUser(getUser(ctx).id);
-      const repoId = user?.subscriptions[repoIndex];
-      if (!repoId) return;
+      const repo = await this.db.getRepoById(repoId);
+      if (!repo) {
+        await this.dataBrokenException(ctx);
+        return;
+      }
 
-      const repo = await this.db.getRepo(repoId.owner, repoId.name);
-      if (!repo) return;
+      const release = repo.releases.find(r => r.id === releaseId);
+      if (!release) {
+        await this.dataBrokenException(ctx);
+        return;
+      }
 
-      const release = repo.releases.slice(PREVIEW_RELEASES_COUNT)[releaseIndex];
       const send: SendFn = async (text) => {
         await ctx.reply(text, { parse_mode: 'Markdown' });
       };

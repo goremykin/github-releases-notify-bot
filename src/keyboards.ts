@@ -30,9 +30,9 @@ export const allOrOneRepo = (): InlineKeyboard =>
     .text('One repository', 'getReleases:one').row()
     .text('Back', 'actionsList');
 
-export const table = (backActionName: string, actionName: string, items: string[]): InlineKeyboard => {
+export const table = (backActionName: string, actionName: string, items: Array<{ label: string; id: number }>): InlineKeyboard => {
   const kb = new InlineKeyboard();
-  items.forEach((item, index) => kb.text(item, `${actionName}:${index}`).row());
+  items.forEach(({ label, id }) => kb.text(label, `${actionName}:${id}`).row());
   kb.text('Back', backActionName);
   return kb;
 };
