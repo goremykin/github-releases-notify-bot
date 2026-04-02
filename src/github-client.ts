@@ -97,7 +97,7 @@ const prepareTags = (res: RawRepoData | null | undefined): ReleaseData[] =>
 
 const releasesQuery = (owner: string, name: string, count: number): string => `
 repository(owner:"${owner}", name:"${name}") {
-  releases(first: ${count}) {
+  releases(last: ${count}, orderBy: { field: CREATED_AT, direction: ASC }) {
     nodes {
       url,
       isPrerelease,
@@ -111,7 +111,7 @@ repository(owner:"${owner}", name:"${name}") {
 
 const tagsQuery = (owner: string, name: string, count: number): string => `
 repository(owner:"${owner}", name:"${name}") {
-  refs(last: ${count}, refPrefix: "refs/tags/") {
+  refs(last: ${count}, refPrefix: "refs/tags/", orderBy: { field: TAG_COMMIT_DATE, direction: ASC }) {
     nodes {
       name
     }
