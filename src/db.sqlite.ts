@@ -180,6 +180,11 @@ export class Db {
   // no-op: capping is enforced at insert time via insertReleases()
   async clearReleases(): Promise<void> {}
 
+  async clearAllReleasesAndTags(): Promise<void> {
+    this.db.exec('DELETE FROM releases');
+    this.db.exec('DELETE FROM tags');
+  }
+
   async updateRepo(
     owner: string,
     name: string,

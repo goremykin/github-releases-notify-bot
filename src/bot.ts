@@ -6,7 +6,7 @@ import { InlineKeyboard } from 'grammy';
 import * as keyboards from './keyboards.ts';
 import { about, greeting, stats } from './texts.ts';
 import { getUser, parseRepo, getLastReleasesInRepos, getReleaseMessages } from './utils.ts';
-import { getVersions } from './github-client.ts';
+import { getVersions, getManyVersionsInBunches } from './github-client.ts';
 import { config } from './config.ts';
 import type { Db } from './db.sqlite.ts';
 import type { Logger } from './logger.ts';
@@ -73,6 +73,7 @@ export class Bot {
     this.bot.callbackQuery('getStats',         this.wrapAction(this.getStats));
     this.bot.callbackQuery('getRepoStats',     this.wrapAction(this.getRepoStats));
     this.bot.callbackQuery('forceCheck',       this.wrapAction(this.forceCheck));
+    this.bot.callbackQuery('refreshData',      this.wrapAction(this.refreshData));
 
     this.bot.on('message:text', this.wrapAction(this.handleAnswer));
     this.bot.start().catch((err: Error) => this.logger.error({ err }, 'Bot polling error'));
@@ -445,6 +446,29 @@ export class Bot {
         `Repositories (${repos.length}):\n\n${lines.join('\n')}`,
         { reply_markup: keyboards.backToAdminActions() }
       );
+    });
+  }
+
+  private async refreshData(ctx: BotContext): Promise<void> {
+    await this.checkAdminPrivileges(ctx, async () => {
+      await ctx.answerCallbackQuery();
+      await this.editMessageText(ctx, 'Fetching from GitHub...', { reply_markup: keyboards.backToAdminActions() });
+
+      const repos = await this.db.getAllReposNames();
+      const data = await getManyVersionsInBunches(repos, 5);
+
+      await this.db.clearAllReleasesAndTags();
+
+      for (const repo of repos) {
+        const releases = data.releases.find(r => r.owner === repo.owner && r.name === repo.name);
+        const tags = data.tags.find(t => t.owner === repo.owner && t.name === repo.name);
+        await this.db.updateRepo(repo.owner, repo.name, {
+          releases: releases?.releases ?? [],
+          tags: tags?.tags ?? [],
+        });
+      }
+
+      await this.editMessageText(ctx, 'Done!', { reply_markup: keyboards.backToAdminActions() });
     });
   }
 
