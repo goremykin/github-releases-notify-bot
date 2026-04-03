@@ -21,8 +21,13 @@ export const backToActions = (): InlineKeyboard =>
 export const addOneMoreRepo = (): InlineKeyboard =>
   new InlineKeyboard().text('Yes', 'addRepo').text('Nope', 'actionsList');
 
-export const expandButton = (repoId: number, releaseId: number): InlineKeyboard =>
-  new InlineKeyboard().text('Expand', `getReleases:expand:${repoId}/${releaseId}`);
+export const expandButton = (repoId: number, releaseId: number, releaseUrl: string): InlineKeyboard =>
+  new InlineKeyboard()
+    .text('Expand', `getReleases:expand:${repoId}/${releaseId}`)
+    .url('View on GitHub', releaseUrl);
+
+export const releaseLink = (url: string): InlineKeyboard =>
+  new InlineKeyboard().url('View on GitHub', url);
 
 export const allOrOneRepo = (): InlineKeyboard =>
   new InlineKeyboard()
@@ -30,9 +35,9 @@ export const allOrOneRepo = (): InlineKeyboard =>
     .text('One repository', 'getReleases:one').row()
     .text('Back', 'actionsList');
 
-export const table = (backActionName: string, actionName: string, items: string[]): InlineKeyboard => {
+export const table = (backActionName: string, actionName: string, items: Array<{ label: string; id: number }>): InlineKeyboard => {
   const kb = new InlineKeyboard();
-  items.forEach((item, index) => kb.text(item, `${actionName}:${index}`).row());
+  items.forEach(({ label, id }) => kb.text(label, `${actionName}:${id}`).row());
   kb.text('Back', backActionName);
   return kb;
 };

@@ -24,7 +24,8 @@ export interface SessionData {
 
 type BotContext = Context & SessionFlavor<SessionData>;
 type Handler = (ctx: BotContext) => Promise<void>;
-type SendFn = (message: string, keyboard: InlineKeyboard | null, repo: RepoDocument | RepoUpdate) => Promise<void>;
+type ReleaseContext = { owner: string; name: string; release: string };
+type SendFn = (message: string, keyboard: InlineKeyboard | null, repo: RepoDocument | RepoUpdate, shortFallback?: string, releaseCtx?: ReleaseContext) => Promise<void>;
 
 const initialSession = (): SessionData => ({ action: null });
 
@@ -58,22 +59,22 @@ export class Bot {
     this.bot.command('about',   this.wrapAction(this.about));
     this.bot.command('admin',   this.wrapAction(this.admin));
 
-    this.bot.callbackQuery('actionsList',      this.wrapAction(this.actionsList));
+    this.bot.callbackQuery('actionsList', this.wrapAction(this.actionsList));
     this.bot.callbackQuery('adminActionsList', this.wrapAction(this.adminActionsList));
-    this.bot.callbackQuery('addRepo',          this.wrapAction(this.addRepo));
-    this.bot.callbackQuery('getReleases',      this.wrapAction(this.getReleases));
-    this.bot.callbackQuery(/^getReleases:expand:(\d+)\/(\d+)$/,            this.wrapAction(this.getReleasesExpandRelease));
-    this.bot.callbackQuery('getReleases:all',  this.wrapAction(this.getReleasesAll));
-    this.bot.callbackQuery('getReleases:one',  this.wrapAction(this.getReleasesOne));
-    this.bot.callbackQuery(/^getReleases:one:(\d+)$/,                      this.wrapAction(this.getReleasesOneRepo));
-    this.bot.callbackQuery(/^getReleases:one:(\d+?):release:(\d+?)$/,      this.wrapAction(this.getReleasesOneRepoRelease));
-    this.bot.callbackQuery('editRepos',        this.wrapAction(this.editRepos));
-    this.bot.callbackQuery(/^editRepos:delete:(.+)$/,                      this.wrapAction(this.editReposDelete));
-    this.bot.callbackQuery('sendMessage',      this.wrapAction(this.sendMessage));
-    this.bot.callbackQuery('getStats',         this.wrapAction(this.getStats));
-    this.bot.callbackQuery('getRepoStats',     this.wrapAction(this.getRepoStats));
-    this.bot.callbackQuery('forceCheck',       this.wrapAction(this.forceCheck));
-    this.bot.callbackQuery('refreshData',      this.wrapAction(this.refreshData));
+    this.bot.callbackQuery('addRepo', this.wrapAction(this.addRepo));
+    this.bot.callbackQuery('getReleases', this.wrapAction(this.getReleases));
+    this.bot.callbackQuery(/^getReleases:expand:(\d+)\/(\d+)$/, this.wrapAction(this.getReleasesExpandRelease));
+    this.bot.callbackQuery('getReleases:all', this.wrapAction(this.getReleasesAll));
+    this.bot.callbackQuery('getReleases:one', this.wrapAction(this.getReleasesOne));
+    this.bot.callbackQuery(/^getReleases:one:(\d+)$/, this.wrapAction(this.getReleasesOneRepo));
+    this.bot.callbackQuery(/^getReleases:one:(\d+?):release:(\d+?)$/, this.wrapAction(this.getReleasesOneRepoRelease));
+    this.bot.callbackQuery('editRepos', this.wrapAction(this.editRepos));
+    this.bot.callbackQuery(/^editRepos:delete:(\d+)$/, this.wrapAction(this.editReposDelete));
+    this.bot.callbackQuery('sendMessage', this.wrapAction(this.sendMessage));
+    this.bot.callbackQuery('getStats', this.wrapAction(this.getStats));
+    this.bot.callbackQuery('getRepoStats', this.wrapAction(this.getRepoStats));
+    this.bot.callbackQuery('forceCheck', this.wrapAction(this.forceCheck));
+    this.bot.callbackQuery('refreshData', this.wrapAction(this.refreshData));
 
     this.bot.on('message:text', this.wrapAction(this.handleAnswer));
     this.bot.start().catch((err: Error) => this.logger.error({ err }, 'Bot polling error'));
@@ -94,13 +95,28 @@ export class Bot {
   }
 
   async notifyUsers(repos: RepoUpdate[]): Promise<void> {
-    const send: SendFn = async (message, _keyboard, repo) => {
+    const send: SendFn = async (message, keyboard, repo, shortFallback, releaseCtx) => {
       const watchedUsers = (repo as RepoUpdate).watchedUsers;
       await Promise.all(watchedUsers.map(async (userId) => {
         try {
-          await this.bot.api.sendMessage(userId, message, { parse_mode: 'Markdown' });
+          await this.bot.api.sendMessage(userId, message, {
+            parse_mode: 'MarkdownV2',
+            link_preview_options: { is_disabled: true },
+            ...(keyboard ? { reply_markup: keyboard } : {}),
+          });
         } catch (error) {
-          this.logger.error({ err: error, userId }, 'Cannot send release to user');
+          this.logger.error({ err: error, userId, releaseCtx }, 'Failed to send full release, trying simplified');
+          if (shortFallback) {
+            try {
+              await this.bot.api.sendMessage(userId, shortFallback, {
+                parse_mode: 'HTML',
+                link_preview_options: { is_disabled: true },
+                ...(keyboard ? { reply_markup: keyboard } : {}),
+              });
+            } catch (fallbackError) {
+              this.logger.error({ err: fallbackError, userId, releaseCtx }, 'Failed to send simplified release');
+            }
+          }
         }
       }));
     };
@@ -202,16 +218,15 @@ export class Bot {
   }
 
   private async editRepos(ctx: BotContext): Promise<void> {
-    const user = await this.db.getUser(getUser(ctx).id);
-    const subscriptions = user?.subscriptions ?? [];
+    const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
 
     await ctx.answerCallbackQuery();
 
-    if (subscriptions.length) {
+    if (repos.length) {
       const kb = new InlineKeyboard();
-      for (const repo of subscriptions) {
+      for (const repo of repos) {
         kb.url(`${repo.owner}/${repo.name}`, `https://github.com/${repo.owner}/${repo.name}`)
-          .text('🗑️', `editRepos:delete:${repo.owner}/${repo.name}`)
+          .text('🗑️', `editRepos:delete:${repo.id}`)
           .row();
       }
       kb.text('Back', 'actionsList');
@@ -227,8 +242,13 @@ export class Bot {
     const user = getUser(ctx);
     const match = ctx.match?.[1];
     if (!match) return;
-    const [owner, name] = match.split('/');
-    await this.db.unbindUserFromRepo(user.id, owner, name);
+    const repoId = parseInt(match);
+    const repo = await this.db.getRepoById(repoId);
+    if (!repo) {
+      await this.dataBrokenException(ctx);
+      return;
+    }
+    await this.db.unbindUserFromRepo(user.id, repo.owner, repo.name);
     await this.editRepos(ctx);
   }
 
@@ -243,47 +263,51 @@ export class Bot {
     const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
     await ctx.answerCallbackQuery();
     const send: SendFn = async (text, keyboard) => {
-      await ctx.reply(text, {
-        parse_mode: 'HTML',
-        ...(keyboard ? { reply_markup: keyboard } : {}),
-      });
+      try {
+        await ctx.reply(text, {
+          parse_mode: 'HTML',
+          ...(keyboard ? { reply_markup: keyboard } : {}),
+        });
+      } catch (error) {
+        this.logger.error({ err: error }, 'Failed to send release');
+      }
     };
     await this.sendReleases(ctx, repos.map(getLastReleasesInRepos), send);
   }
 
   private async getReleasesOne(ctx: BotContext): Promise<void> {
-    const user = await this.db.getUser(getUser(ctx).id);
-    const subscriptions = user?.subscriptions ?? [];
+    const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
 
     await ctx.answerCallbackQuery();
     await this.editMessageText(ctx, 'Select repository',
       { reply_markup: keyboards.table(
         'getReleases',
         'getReleases:one',
-        subscriptions.map(({ owner, name }) => `${owner}/${name}`)
+        repos.map(({ id, owner, name }) => ({ label: `${owner}/${name}`, id }))
       )}
     );
   }
 
   private async getReleasesOneRepo(ctx: BotContext): Promise<void> {
-    const matchIndex = ctx.match?.[1];
-    if (!matchIndex) return;
+    const matchId = ctx.match?.[1];
+    if (!matchId) return;
     await ctx.answerCallbackQuery();
 
-    const index = parseInt(matchIndex);
-    const user = await this.db.getUser(getUser(ctx).id);
-    const repoId = user?.subscriptions[index];
-    if (!repoId) return;
-
-    const repo = await this.db.getRepo(repoId.owner, repoId.name);
-    if (!repo) return;
+    const repoId = parseInt(matchId);
+    const repo = await this.db.getRepoById(repoId);
+    if (!repo) {
+      await this.dataBrokenException(ctx);
+      return;
+    }
 
     const ok = await this.editMessageText(ctx, 'Select release',
       { reply_markup: keyboards.table(
         'getReleases:one',
-        `getReleases:one:${index}:release`,
-        repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({ name: relName, isPrerelease }) =>
-          `${relName}${isPrerelease ? ' (pre-release)' : ''}`)
+        `getReleases:one:${repoId}:release`,
+        repo.releases.slice(PREVIEW_RELEASES_COUNT).map(({ id, name: relName, isPrerelease }) => ({
+          label: `${relName}${isPrerelease ? ' (pre-release)' : ''}`,
+          id,
+        }))
       )}
     );
     if (!ok) await this.dataBrokenException(ctx);
@@ -292,27 +316,42 @@ export class Bot {
   private async getReleasesOneRepoRelease(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery();
 
-    try {
-      const [, matchRepo, matchRelease] = ctx.match ?? [];
-      if (!matchRepo || !matchRelease) return;
-      const repoIndex = parseInt(matchRepo);
-      const releaseIndex = parseInt(matchRelease);
+    const [, matchRepoId, matchReleaseId] = ctx.match ?? [];
+    if (!matchRepoId || !matchReleaseId) return;
+    const repoId = parseInt(matchRepoId);
+    const releaseId = parseInt(matchReleaseId);
 
-      const user = await this.db.getUser(getUser(ctx).id);
-      const repoId = user?.subscriptions[repoIndex];
-      if (!repoId) return;
-
-      const repo = await this.db.getRepo(repoId.owner, repoId.name);
-      if (!repo) return;
-
-      const release = repo.releases.slice(PREVIEW_RELEASES_COUNT)[releaseIndex];
-      const send: SendFn = async (text) => {
-        await ctx.reply(text, { parse_mode: 'Markdown' });
-      };
-      await this.sendReleases(null, [{ ...repo, releases: [release] }], send);
-    } catch {
+    const repo = await this.db.getRepoById(repoId);
+    if (!repo) {
       await this.dataBrokenException(ctx);
+      return;
     }
+
+    const release = repo.releases.find(r => r.id === releaseId);
+    if (!release) {
+      await this.dataBrokenException(ctx);
+      return;
+    }
+
+    const send: SendFn = async (text, keyboard, _repo, shortFallback, releaseCtx) => {
+      try {
+        await ctx.reply(text, {
+          parse_mode: 'MarkdownV2',
+          link_preview_options: { is_disabled: true },
+          ...(keyboard ? { reply_markup: keyboard } : {}),
+        });
+      } catch (error) {
+        this.logger.error({ err: error, releaseCtx }, 'Failed to send full release, trying simplified');
+        if (shortFallback) {
+          await ctx.reply(shortFallback, {
+            parse_mode: 'HTML',
+            link_preview_options: { is_disabled: true },
+            ...(keyboard ? { reply_markup: keyboard } : {}),
+          });
+        }
+      }
+    };
+    await this.sendReleases(null, [{ ...repo, releases: [release] }], send);
   }
 
   private async getReleasesExpandRelease(ctx: BotContext): Promise<void> {
@@ -333,15 +372,20 @@ export class Bot {
     }
 
     const { full } = getReleaseMessages(repo, release);
+    const keyboard = release.url ? keyboards.releaseLink(release.url) : undefined;
 
-    if (full.length === 1) {
-      const ok = await this.editMessageText(ctx, full[0], { parse_mode: 'Markdown' });
-      if (!ok) await this.dataBrokenException(ctx);
-    } else {
+    const ok = await this.editMessageText(ctx, full, {
+      parse_mode: 'MarkdownV2',
+      link_preview_options: { is_disabled: true },
+      reply_markup: keyboard,
+    });
+    if (!ok) {
       await ctx.deleteMessage();
-      for (const message of full) {
-        await ctx.reply(message, { parse_mode: 'Markdown' });
-      }
+      await ctx.reply(full, {
+        parse_mode: 'MarkdownV2',
+        link_preview_options: { is_disabled: true },
+        ...(keyboard ? { reply_markup: keyboard } : {}),
+      });
     }
   }
 
@@ -489,14 +533,14 @@ export class Bot {
     return async (release: ReleaseData) => {
       const { full, short } = getReleaseMessages(repo, release);
 
+      const releaseCtx: ReleaseContext = { owner: repo.owner, name: repo.name, release: release.name };
       if (ctx) {
         const repoId = (repo as RepoDocument).id;
-        const keyboard = keyboards.expandButton(repoId, (release as Release).id);
-        await send(short, keyboard, repo);
+        const keyboard = keyboards.expandButton(repoId, (release as Release).id, release.url);
+        await send(short, keyboard, repo, undefined, releaseCtx);
       } else {
-        for (const message of full) {
-          await send(message, null, repo);
-        }
+        const keyboard = release.url ? keyboards.releaseLink(release.url) : null;
+        await send(full, keyboard, repo, short, releaseCtx);
       }
     };
   }
@@ -520,7 +564,7 @@ export class Bot {
   private async editMessageText(
     ctx: BotContext,
     text: string,
-    opts?: { reply_markup?: InlineKeyboard; parse_mode?: ParseMode }
+    opts?: { reply_markup?: InlineKeyboard; parse_mode?: ParseMode; link_preview_options?: { is_disabled?: boolean } }
   ): Promise<boolean> {
     try {
       await ctx.editMessageText(text, opts);
