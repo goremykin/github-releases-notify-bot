@@ -94,11 +94,15 @@ export class Bot {
   }
 
   async notifyUsers(repos: RepoUpdate[]): Promise<void> {
-    const send: SendFn = async (message, _keyboard, repo) => {
+    const send: SendFn = async (message, keyboard, repo) => {
       const watchedUsers = (repo as RepoUpdate).watchedUsers;
       await Promise.all(watchedUsers.map(async (userId) => {
         try {
-          await this.bot.api.sendMessage(userId, message, { parse_mode: 'Markdown' });
+          await this.bot.api.sendMessage(userId, message, {
+            parse_mode: 'MarkdownV2',
+            link_preview_options: { is_disabled: true },
+            ...(keyboard ? { reply_markup: keyboard } : {}),
+          });
         } catch (error) {
           this.logger.error({ err: error, userId }, 'Cannot send release to user');
         }
@@ -313,8 +317,12 @@ export class Bot {
       return;
     }
 
-    const send: SendFn = async (text) => {
-      await ctx.reply(text, { parse_mode: 'Markdown' });
+    const send: SendFn = async (text, keyboard) => {
+      await ctx.reply(text, {
+        parse_mode: 'MarkdownV2',
+        link_preview_options: { is_disabled: true },
+        ...(keyboard ? { reply_markup: keyboard } : {}),
+      });
     };
     await this.sendReleases(null, [{ ...repo, releases: [release] }], send);
   }
@@ -337,15 +345,19 @@ export class Bot {
     }
 
     const { full } = getReleaseMessages(repo, release);
+    const keyboard = release.url ? keyboards.releaseLink(release.url) : undefined;
 
-    if (full.length === 1) {
-      const ok = await this.editMessageText(ctx, full[0], { parse_mode: 'Markdown' });
-      if (!ok) await this.dataBrokenException(ctx);
-    } else {
+    const ok = await this.editMessageText(ctx, full, {
+      parse_mode: 'MarkdownV2',
+      reply_markup: keyboard,
+    });
+    if (!ok) {
       await ctx.deleteMessage();
-      for (const message of full) {
-        await ctx.reply(message, { parse_mode: 'Markdown' });
-      }
+      await ctx.reply(full, {
+        parse_mode: 'MarkdownV2',
+        link_preview_options: { is_disabled: true },
+        ...(keyboard ? { reply_markup: keyboard } : {}),
+      });
     }
   }
 
@@ -495,12 +507,11 @@ export class Bot {
 
       if (ctx) {
         const repoId = (repo as RepoDocument).id;
-        const keyboard = keyboards.expandButton(repoId, (release as Release).id);
+        const keyboard = keyboards.expandButton(repoId, (release as Release).id, release.url);
         await send(short, keyboard, repo);
       } else {
-        for (const message of full) {
-          await send(message, null, repo);
-        }
+        const keyboard = release.url ? keyboards.releaseLink(release.url) : null;
+        await send(full, keyboard, repo);
       }
     };
   }

@@ -21,8 +21,13 @@ export const backToActions = (): InlineKeyboard =>
 export const addOneMoreRepo = (): InlineKeyboard =>
   new InlineKeyboard().text('Yes', 'addRepo').text('Nope', 'actionsList');
 
-export const expandButton = (repoId: number, releaseId: number): InlineKeyboard =>
-  new InlineKeyboard().text('Expand', `getReleases:expand:${repoId}/${releaseId}`);
+export const expandButton = (repoId: number, releaseId: number, releaseUrl: string): InlineKeyboard =>
+  new InlineKeyboard()
+    .text('Expand', `getReleases:expand:${repoId}/${releaseId}`)
+    .url('View on GitHub', releaseUrl);
+
+export const releaseLink = (url: string): InlineKeyboard =>
+  new InlineKeyboard().url('View on GitHub', url);
 
 export const allOrOneRepo = (): InlineKeyboard =>
   new InlineKeyboard()

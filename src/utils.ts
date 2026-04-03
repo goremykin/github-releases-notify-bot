@@ -1,8 +1,10 @@
 import type { Context } from 'grammy';
 import type { Chat } from 'grammy/types';
+import convert from 'telegramify-markdown';
 import type { Release, RepoDocument, RepoIdentifier, TelegramUser } from './types.ts';
 
 const MAX_MESSAGE_LENGTH = 4096;
+export const TRUNCATED_SUFFIX = '\n\n_\\.\\.\\.message truncated_';
 
 const chatToUser = (chat: Chat): TelegramUser => ({
   id: chat.id,
@@ -30,40 +32,38 @@ const getFullReleaseMessage = (
   repo: RepoIdentifier = { owner: '', name: '' },
   release: Partial<Release> = { name: '', url: '' }
 ): string =>
-  `*${repo.owner}/${repo.name}*
-${release.isPrerelease ? '*Pre-release* ' : ''}[${release.name}](${release.url})
-${release.description
-    ? release.description
-      .replace(/\*/mgi, '')
-      .replace(/_/mgi, '\\_')
-      .trim()
-    : ''}`;
+  convert(
+    `**${repo.owner}/${repo.name}**\n` +
+    `${release.isPrerelease ? '**Pre-release** ' : ''}[${release.name ?? ''}](${release.url ?? ''})\n` +
+    (release.description?.trim() ?? ''),
+    'escape'
+  );
 
-const splitLongMessage = (message: string, maxLength: number): string[] => {
-  const splitRegExp = new RegExp([
-    `([\\s\\S]{1,${maxLength - 1}}([\\n\\r]|$))`,
-    `([\\s\\S]{1,${maxLength - 1}}(\\s|$))`,
-    `([\\s\\S]{1,${maxLength}})`
-  ].join('|'));
+export const truncateMessage = (message: string, maxLength: number): string => {
+  if (message.length <= maxLength) return message;
 
-  const splitedMessage: string[] = [];
-  let separableString = message;
+  const limit = maxLength - TRUNCATED_SUFFIX.length;
+  let insideCode = false;
+  let lastSafeNewline = -1;
 
-  while (separableString.length) {
-    const match = separableString.match(splitRegExp);
-
-    if (match) {
-      splitedMessage.push(match[0]);
-      separableString = separableString.substring(match[0].length);
+  for (let i = 0; i < limit; i++) {
+    if (message.startsWith('```', i)) {
+      insideCode = !insideCode;
+      i += 2;
+      continue;
+    }
+    if (!insideCode && message[i] === '\n') {
+      lastSafeNewline = i;
     }
   }
 
-  return splitedMessage;
+  const cutAt = lastSafeNewline > 0 ? lastSafeNewline : limit;
+  return message.slice(0, cutAt) + TRUNCATED_SUFFIX;
 };
 
-export const getReleaseMessages = (repo: RepoIdentifier, release: Partial<Release>): { short: string; full: string[] } => ({
+export const getReleaseMessages = (repo: RepoIdentifier, release: Partial<Release>): { short: string; full: string } => ({
   short: getShortReleaseMessage(repo, release),
-  full: splitLongMessage(getFullReleaseMessage(repo, release), MAX_MESSAGE_LENGTH)
+  full: truncateMessage(getFullReleaseMessage(repo, release), MAX_MESSAGE_LENGTH),
 });
 
 export const parseRepo = (str: string): RepoIdentifier | null => {
