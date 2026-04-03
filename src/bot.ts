@@ -371,7 +371,7 @@ export class Bot {
       return;
     }
 
-    const { full } = getReleaseMessages(repo, release);
+    const { full, short } = getReleaseMessages(repo, release);
     const keyboard = release.url ? keyboards.releaseLink(release.url) : undefined;
 
     const ok = await this.editMessageText(ctx, full, {
@@ -380,10 +380,15 @@ export class Bot {
       reply_markup: keyboard,
     });
     if (!ok) {
-      await ctx.deleteMessage();
-      await ctx.reply(full, {
-        parse_mode: 'MarkdownV2',
-        link_preview_options: { is_disabled: true },
+      const shortWithDetails =
+`
+${short}
+
+<i>Failed to expand</i>
+`;
+
+      await this.editMessageText(ctx, shortWithDetails, {
+        parse_mode: 'HTML',
         ...(keyboard ? { reply_markup: keyboard } : {}),
       });
     }
@@ -569,7 +574,8 @@ export class Bot {
     try {
       await ctx.editMessageText(text, opts);
       return true;
-    } catch {
+    } catch (error) {
+      this.logger.error({ err: error }, 'Failed to edit message');
       return false;
     }
   }
