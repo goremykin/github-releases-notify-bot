@@ -24,7 +24,8 @@ export interface SessionData {
 
 type BotContext = Context & SessionFlavor<SessionData>;
 type Handler = (ctx: BotContext) => Promise<void>;
-type SendFn = (message: string, keyboard: InlineKeyboard | null, repo: RepoDocument | RepoUpdate) => Promise<void>;
+type ReleaseContext = { owner: string; name: string; release: string };
+type SendFn = (message: string, keyboard: InlineKeyboard | null, repo: RepoDocument | RepoUpdate, shortFallback?: string, releaseCtx?: ReleaseContext) => Promise<void>;
 
 const initialSession = (): SessionData => ({ action: null });
 
@@ -94,7 +95,7 @@ export class Bot {
   }
 
   async notifyUsers(repos: RepoUpdate[]): Promise<void> {
-    const send: SendFn = async (message, keyboard, repo) => {
+    const send: SendFn = async (message, keyboard, repo, shortFallback, releaseCtx) => {
       const watchedUsers = (repo as RepoUpdate).watchedUsers;
       await Promise.all(watchedUsers.map(async (userId) => {
         try {
@@ -104,7 +105,18 @@ export class Bot {
             ...(keyboard ? { reply_markup: keyboard } : {}),
           });
         } catch (error) {
-          this.logger.error({ err: error, userId }, 'Cannot send release to user');
+          this.logger.error({ err: error, userId, releaseCtx }, 'Failed to send full release, trying simplified');
+          if (shortFallback) {
+            try {
+              await this.bot.api.sendMessage(userId, shortFallback, {
+                parse_mode: 'HTML',
+                link_preview_options: { is_disabled: true },
+                ...(keyboard ? { reply_markup: keyboard } : {}),
+              });
+            } catch (fallbackError) {
+              this.logger.error({ err: fallbackError, userId, releaseCtx }, 'Failed to send simplified release');
+            }
+          }
         }
       }));
     };
@@ -251,10 +263,14 @@ export class Bot {
     const repos = await this.db.getUserSubscriptions(getUser(ctx).id);
     await ctx.answerCallbackQuery();
     const send: SendFn = async (text, keyboard) => {
-      await ctx.reply(text, {
-        parse_mode: 'HTML',
-        ...(keyboard ? { reply_markup: keyboard } : {}),
-      });
+      try {
+        await ctx.reply(text, {
+          parse_mode: 'HTML',
+          ...(keyboard ? { reply_markup: keyboard } : {}),
+        });
+      } catch (error) {
+        this.logger.error({ err: error }, 'Failed to send release');
+      }
     };
     await this.sendReleases(ctx, repos.map(getLastReleasesInRepos), send);
   }
@@ -317,12 +333,23 @@ export class Bot {
       return;
     }
 
-    const send: SendFn = async (text, keyboard) => {
-      await ctx.reply(text, {
-        parse_mode: 'MarkdownV2',
-        link_preview_options: { is_disabled: true },
-        ...(keyboard ? { reply_markup: keyboard } : {}),
-      });
+    const send: SendFn = async (text, keyboard, _repo, shortFallback, releaseCtx) => {
+      try {
+        await ctx.reply(text, {
+          parse_mode: 'MarkdownV2',
+          link_preview_options: { is_disabled: true },
+          ...(keyboard ? { reply_markup: keyboard } : {}),
+        });
+      } catch (error) {
+        this.logger.error({ err: error, releaseCtx }, 'Failed to send full release, trying simplified');
+        if (shortFallback) {
+          await ctx.reply(shortFallback, {
+            parse_mode: 'HTML',
+            link_preview_options: { is_disabled: true },
+            ...(keyboard ? { reply_markup: keyboard } : {}),
+          });
+        }
+      }
     };
     await this.sendReleases(null, [{ ...repo, releases: [release] }], send);
   }
@@ -349,6 +376,7 @@ export class Bot {
 
     const ok = await this.editMessageText(ctx, full, {
       parse_mode: 'MarkdownV2',
+      link_preview_options: { is_disabled: true },
       reply_markup: keyboard,
     });
     if (!ok) {
@@ -505,13 +533,14 @@ export class Bot {
     return async (release: ReleaseData) => {
       const { full, short } = getReleaseMessages(repo, release);
 
+      const releaseCtx: ReleaseContext = { owner: repo.owner, name: repo.name, release: release.name };
       if (ctx) {
         const repoId = (repo as RepoDocument).id;
         const keyboard = keyboards.expandButton(repoId, (release as Release).id, release.url);
-        await send(short, keyboard, repo);
+        await send(short, keyboard, repo, undefined, releaseCtx);
       } else {
         const keyboard = release.url ? keyboards.releaseLink(release.url) : null;
-        await send(full, keyboard, repo);
+        await send(full, keyboard, repo, short, releaseCtx);
       }
     };
   }
@@ -535,7 +564,7 @@ export class Bot {
   private async editMessageText(
     ctx: BotContext,
     text: string,
-    opts?: { reply_markup?: InlineKeyboard; parse_mode?: ParseMode }
+    opts?: { reply_markup?: InlineKeyboard; parse_mode?: ParseMode; link_preview_options?: { is_disabled?: boolean } }
   ): Promise<boolean> {
     try {
       await ctx.editMessageText(text, opts);
