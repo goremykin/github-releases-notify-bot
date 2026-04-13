@@ -30,6 +30,7 @@ export class TaskManager {
 
   execute(name: string): void {
     const task = this.tasks[name];
+    if (task.running) return;
     const promise = Promise.resolve(task.cb())
       .then((data) => task.subscriptions.forEach((sub) => sub(data)))
       .finally(() => { task.running = null; });

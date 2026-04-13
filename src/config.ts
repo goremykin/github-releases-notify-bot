@@ -41,7 +41,6 @@ export const config: Config = {
   },
   app: {
     updateInterval: 300,
-    restartRate: 180,
     includePrerelease: false,
     prettyLogs: true,
     ...parsed.app,
